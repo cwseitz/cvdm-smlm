@@ -1,0 +1,91 @@
+output_dir: "/mnt/seitzcx/exps/exp_CVDM/probes/nanoruler-3"
+
+model:
+  noise_model_type: "unet"
+  alpha: 0.001
+  load_weights: "/mnt/seitzcx/exps/exp_CVDM/models/cvdm_nanoruler-sim-sigma2/weights/model_12000_addb3022-81d7-47d4-8e97-6c3053fc1080.h5"
+  load_mu_weights: null
+  snr_expansion_n: 1
+  zmd: false
+  diff_inp: false
+
+eval:
+  generation_timesteps: 200
+  image_freq: 100
+  checkpoint_freq: 1000
+  log_freq: 100
+  val_freq: 200
+  val_len: 10
+
+sim:
+  generator: "Nanoruler2D"
+  size: 64
+  sigma: 1.23
+  texp: 1.0
+  N0_min: 500.0
+  N0_max: 1000.0
+  eta: 1.0
+  gain: 3.92
+  B0_min: 100.0
+  B0_max: 300.0
+  offset: 100.0
+  var: 24.1
+  spacing_px: null
+  spacing_nm: 94
+  pixel_size_nm: 44
+  edgew: 1.0
+  position_sigma: 0.5
+  pattern: "thomas"  # "uniform" or "thomas"
+  parent_rate: null
+  parent_count: 12
+  children_sigma: 3.0
+  children_min: 1
+  children_pmf: [0.25, 0.25, 0.25, 0.25]
+  burst_prob: 0.0
+  halo_alpha: 1.0
+  halo_sigma: 4.0
+  grf_alpha: 1.0
+  grf_sigma_min: 5.0
+  grf_sigma_max: 20.0
+  grf_seed: null
+  label_upsample: 4
+  label_sigma: 2.0
+  label_scale: 100.0
+  label_centering: true
+  input_upsample: 4
+
+probe:
+  probes: ["3b_map"]  # options: 2a, 3a, 3b, 3c, 2bc, 2de, corr, detect_overlay, detect_by_density, 3b_map
+  densities: [20]
+  n_images: 1
+  n_iters: 100
+  show_tqdm: true
+  save_cache: true
+  use_probe_cache: true
+  subtract_offset: true
+  input_centering: "zscore"  # "none" or "zscore"
+  cache_dir: "probe_cache"
+  detect_on: "mean"  # "mean" or "single" (does not affect 3b map)
+  inset_lr_size: 15
+  inset_hr_size: 60
+  fig3_density: 20
+  fig3_inset: [50, 50]
+  fig3_inset_in_lr: true
+  fig3_samples: [0,1,2,3]
+  std_overlay_percentile: 99.5
+  contrast_low: 1.0
+  contrast_high: 99.0
+  inset_contrast_low: 1.0
+  inset_contrast_high: 99.0
+  corr_window: 3
+  map_cluster_radius_lr: 2.0
+  map_patch_size_lr: 9
+
+metrics:
+  tol: 5.0
+  pixel_size_nm: 44.0
+  error_bins: [500, 600, 700, 800, 900]
+
+detection:
+  log_threshold: 2.0
+  fit_enabled: false

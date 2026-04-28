@@ -1,0 +1,56 @@
+task: "SMLM"
+
+model:
+  noise_model_type: "unet"
+  alpha: 0.001
+  load_weights: "/mnt/seitzcx/exps/exp_CVDM/models/cvdm_nanoruler-sim-sigma2/weights/model_12000_addb3022-81d7-47d4-8e97-6c3053fc1080.h5" 
+  load_mu_weights: null
+  snr_expansion_n: 1
+  zmd: False
+  diff_inp: False
+
+eval:
+  generation_timesteps: 200
+  checkpoint_freq: 1000
+  log_freq: 10
+  image_freq: 100
+  val_freq: 200
+  val_len: 10
+  n_iters: 100
+
+test:
+  results_dir: "/mnt/seitzcx/exps/exp_CVDM/results"
+  data_dir: "/mnt/seitzcx/exps/exp_CVDM/data"
+  prefixes:
+    - cvdm_sz64_nanoruler_94-high
+  stack_name: "lr-1x.tif"
+  n_frames: null
+  input_upsample: 4
+  subtract_offset: false
+  offset: 0.0
+  input_centering: "zscore"  # "none" or "zscore"
+  contrast_low: 1.0
+  contrast_high: 99.0
+  inset_contrast_low: 1.0
+  inset_contrast_high: 99.0
+  inset_lr_size: 15
+  inset_hr_size: 60
+  inset_threshold_percentile: 99.5
+  pixel_size_nm: 44.0
+  nanoruler_spacing_nm: 94.0
+  nanoruler_tol_nm: 20.0
+  nanoruler_log_threshold: 0.5
+  nanoruler_min_sigma: 0.75
+  nanoruler_max_sigma: 1.5
+  nanoruler_dot_diameter_px: 1.0
+  nanoruler_line_width_px: 0.7
+  nanoruler_dot_alpha: 0.6
+  nanoruler_line_alpha: 0.6
+  probes: ["3b_map"]
+  fig3b_samples: [0, 1, 2, 3, 4]
+  skip_inference: true
+  nanoruler_rand_seed: 1
+  spot_max_spots_per_iter: 5
+  spot_patch_size: 30
+  spot_seed: 1
+

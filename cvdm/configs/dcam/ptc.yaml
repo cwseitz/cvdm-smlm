@@ -1,0 +1,7 @@
+# Simple PTC config
+stack: "/Users/seitzcx/Desktop/exps/exp_CVDM/data/ptc.tif"
+out_dir: "/Users/seitzcx/Desktop/exps/exp_CVDM/results"
+prefix: "dark_ptc"
+offset: 100.0
+fixed_intercept_adu: 24.1
+log_log: false

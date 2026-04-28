@@ -1,0 +1,73 @@
+task: "SMLM"
+
+model:
+  noise_model_type: "unet"
+  alpha: 0.001
+  load_weights: null
+  load_mu_weights: null
+  snr_expansion_n: 1
+  zmd: false
+  diff_inp: false
+
+training:
+  lr: 0.0001
+  epochs: 50
+
+# Number of batches drawn per epoch from the on-the-fly simulator
+steps_per_epoch: 200
+# Number of validation batches used for each val step
+val_steps: 10
+
+eval:
+  output_path: "/mnt/seitzcx/exps/exp_CVDM/models/"
+  generation_timesteps: 200
+  checkpoint_freq: 1000
+  log_freq: 100
+  image_freq: 100
+  val_freq: 200
+  val_len: 10
+  n_iters: 1
+
+output_subdir: "cvdm_uniform-sim"
+sim_preview_count: 100
+sim_preview_path: null
+
+neptune:
+  name: "CVDM"
+  project: "cwseitz/train"
+
+data:
+  batch_size: 2
+  im_size: 64
+
+sim:
+  generator: "Uniform2D"
+  size: null
+  nspots_min: 1
+  nspots_max: 20
+  sigma: 1.23
+  texp: 1.0
+  N0_min: 500.0
+  N0_max: 5000.0
+  eta: 1.0
+  gain: 3.92
+  B0_min: 100.0
+  B0_max: 300.0
+  offset: 100.0
+  var: 24.1
+  halo_alpha: 1.0
+  halo_sigma: 4.0
+  grf_alpha: 1.0
+  grf_sigma_min: 5.0
+  grf_sigma_max: 20.0
+  grf_seed: null
+  label_type: "kde"  # "kde", "spikes", or "mu_s"
+  label_upsample: 4
+  label_sigma: 2.0
+  input_upsample: 4
+  input_centering: "zscore"  # "none" or "zscore"
+  label_scale: 100.0
+  label_centering: true
+
+val:
+  enabled: false
