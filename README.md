@@ -6,15 +6,14 @@ This repository contains code and experiments for applying the conditional varia
 
 - `cvdm/` – Core Python package
   - `architectures/` – UNet/SR3 blocks and components
-  - `models/` – Noise, variance, mean, and joint model definitions
-  - `diffusion_models/` – Diffusion model wrappers
+  - `models/` – Model definitions
   - `data/` – Dataset loaders and data utilities
   - `generators/` – Synthetic data generators
   - `utils/` – Training/inference/metrics utilities
   - `psf/` – PSF modeling utilities
-- `mains/` – Entry points for training, testing, and plotting
-- `configs/` – YAML configuration files
-- `tests/` – Basic tests
+  - `mains/` – Entry points for training, testing, and plotting
+  - `configs/` – YAML configuration files
+  - `make/` – Image simulation methods
 - `requirements.txt` – Python dependencies
 - `setup.py` – Package setup
 
