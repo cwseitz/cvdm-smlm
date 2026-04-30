@@ -1,5 +1,7 @@
 from typing import List
 
+# Citation: Della Maggiora, Gabriel, Luis Alberto Croquevielle, Nikita Deshpande, Harry Horsley, Thomas Heinis, and Artur Yakimovich. "Conditional Variational Diffusion Models." ICLR 2023.
+
 import cv2
 import numpy as np
 import tensorflow as tf

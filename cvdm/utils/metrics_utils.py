@@ -1,5 +1,7 @@
 from typing import Dict, Optional
 
+# Citation: Della Maggiora, Gabriel, Luis Alberto Croquevielle, Nikita Deshpande, Harry Horsley, Thomas Heinis, and Artur Yakimovich. "Conditional Variational Diffusion Models." ICLR 2023.
+
 import numpy as np
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 
