@@ -1,4 +1,4 @@
-# CVDM
+# CVDM-SMLM
 
 This repository contains code and experiments for applying the conditional variational diffusion model (CVDM) in single molecule localization microscopy (SMLM). It includes model definitions, training and evaluation scripts, dataset generators, and plotting utilities used for experiments and figures.
 
