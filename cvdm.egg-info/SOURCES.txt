@@ -1,0 +1,7 @@
+README.md
+setup.py
+cvdm/__init__.py
+cvdm.egg-info/PKG-INFO
+cvdm.egg-info/SOURCES.txt
+cvdm.egg-info/dependency_links.txt
+cvdm.egg-info/top_level.txt

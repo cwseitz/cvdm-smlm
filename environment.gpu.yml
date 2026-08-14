@@ -1,0 +1,21 @@
+name: cvdm-smlm-gpu
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - numpy=1.24.4
+  - pillow=10.2.0
+  - scikit-image=0.21.0
+  - scikit-learn=1.3.2
+  - matplotlib=3.7.5
+  - tqdm=4.66.2
+  - pyyaml=6.0.2
+  - pip:
+      - tensorflow[and-cuda]==2.14.1
+      - keras==2.14.0
+      - tensorflow_addons==0.22.0
+      - neptune==1.12.0
+      - opencv-python-headless==4.10.0.84
+      - cupy-cuda11x==13.3.0

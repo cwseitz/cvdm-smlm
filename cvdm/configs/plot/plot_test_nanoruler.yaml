@@ -1,0 +1,45 @@
+mode: "test"
+
+plot:
+  # One or more test output folders containing x_stack.tif, y_stack.tif, z_stack.tif.
+  output_dirs:
+    - "/Users/cwseitz/Library/CloudStorage/OneDrive-purdue.edu/Research/CVDM/Data/exp_CVDM/results/cvdm_sz64_n500_high_d"
+
+  # Optional shard controls when only x-<step>-<iter>.tif style files exist.
+  # shard_sample_idx: 0
+  # shard_n_iters: 1
+  # write_stacks_from_shards: true
+
+  # Rendering parameters (used when test_config is not provided).
+  input_upsample: 4
+  contrast_low: 1.0
+  contrast_high: 99.0
+  inset_contrast_low: 1.0
+  inset_contrast_high: 99.0
+  inset_lr_size: 15
+  inset_hr_size: 60
+  inset_threshold_percentile: 99.5
+  pixel_size_nm: 44.0
+  nanoruler_spacing_nm: 94.0
+  nanoruler_tol_nm: 20.0
+  nanoruler_log_threshold: 0.5
+  nanoruler_min_sigma: 0.75
+  nanoruler_max_sigma: 1.5
+  nanoruler_dot_diameter_px: 1.0
+  nanoruler_line_width_px: 0.7
+  nanoruler_dot_alpha: 0.6
+  nanoruler_line_alpha: 0.6
+  fig3b_samples: [0, 1, 2, 3, 4]
+  spot_patch_size: 30
+  spot_seed: 1
+  spot_max_spots_per_iter: 5
+  nanoruler_rand_seed: 1
+
+  probes:
+    - 2a
+    - 3a
+    - 3b
+    - 3b_mark
+    - 3b_rand
+    - 3b_spots
+    - 3b_map

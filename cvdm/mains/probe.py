@@ -650,6 +650,8 @@ def main() -> None:
     hr_inset_size = int(probe_cfg.get("inset_hr_size", 60))
     if "2a" in probes:
         fig, axes = plt.subplots(len(densities), 3, figsize=(9, 9))
+        if len(densities) == 1:
+            axes = np.expand_dims(axes, axis=0)
         for row, density in enumerate(densities):
             sample = sample_by_density.get(str(density))
             if sample is None:

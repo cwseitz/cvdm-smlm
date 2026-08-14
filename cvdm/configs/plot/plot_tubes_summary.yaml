@@ -1,0 +1,57 @@
+paths:
+  hd_dir: "/Users/cwseitz/Library/CloudStorage/OneDrive-purdue.edu/Research/CVDM/Data/exp_CVDM/data/cvdm_sz64_n500_high_d"
+  ls_dir: "/Users/cwseitz/Library/CloudStorage/OneDrive-purdue.edu/Research/CVDM/Data/exp_CVDM/data/cvdm_sz64_n15k_long_sum5"
+  hd_results_dir: "/Users/cwseitz/Library/CloudStorage/OneDrive-purdue.edu/Research/CVDM/Data/exp_CVDM/results/cvdm_sz64_n500_high_d"
+  ls_results_dir: "/Users/cwseitz/Library/CloudStorage/OneDrive-purdue.edu/Research/CVDM/Data/exp_CVDM/results/cvdm_sz64_n15k_long_sum5"
+  output_dir: "/Users/cwseitz/Desktop/probes/figure4_tubes"
+
+figure_4b:
+  hd_idx: 0
+  ls_idx: 0
+  ls_sum_idx: 0
+  rolling_ball_radius: 5.0
+  trim_border_px: 5
+  lr_inset_size: 15
+  hr_inset_size: 60
+  lr_inset_coords:
+    - [10, 3]
+    - [2, 4]
+  hr_inset_coords:
+    - [40, 12]
+    - [8, 16]
+  output_name: "figure-4b.png"
+
+figure_4cd:
+  detection:
+    log_threshold: 0.2
+    median_filter_radius_px: 1  # set to 1 to median-filter before LoG detection
+    min_sigma: 0.75
+    max_sigma: 1.5
+    kde_sigma: 1.0
+    max_spots_per_frame: 0
+    movie_stride: 1
+    regenerate_cvdm_render: true
+    napari_preview: false
+    napari_preview_only: false
+    napari_preview_dataset: "both"  # one of: hd, ls, both
+  ls_cvdm_roll: [0, 1]
+  hd_cvdm_roll_axis0: 5
+  hd_cvdm_roll_axis1: 4
+  ls_thunder_vmax: 40.0
+  ls_thunder_multi_vmax: 30.0
+  output_panel_ls: "figure-4c-1.png"
+  output_panel_hd: "figure-4c-2.png"
+  output_line_name: "figure-4c.png"
+  output_crop_name: "figure-4d.png"
+  pixel_size_nm: 25.0
+  ls_profile_row: 120
+  ls_profile_start: 50
+  ls_profile_stop: 80
+  hd_profile_row: 182
+  hd_profile_start: 83
+  hd_profile_stop: 113
+  profile_offset: 40
+  hd_crop_row_start: 162
+  hd_crop_row_stop: 212
+  hd_crop_col_start: 73
+  hd_crop_col_stop: 123

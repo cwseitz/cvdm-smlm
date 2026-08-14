@@ -1,0 +1,51 @@
+mode: "probe"
+
+plot:
+  # Figures are written under this directory.
+  probe_output_dir: "/Users/cwseitz/Desktop/probes"
+
+  # Cache source can be relative to probe_output_dir (default) or absolute.
+  # probe_cache_dir: "/path/to/existing/probe_cache"
+  cache_dir: "/Users/cwseitz/Library/CloudStorage/OneDrive-purdue.edu/Research/CVDM/Data/exp_CVDM/probes/nanoruler-3/probe_cache"
+  generator: "Nanoruler2D"
+  size: 64
+  input_upsample: 4
+  label_upsample: 4
+  label_sigma: 2.0
+  label_scale: 100.0
+  label_centering: true
+  sigma: 1.23
+
+  # Optional: override inferred densities/sample count from cache folders.
+  # densities: [20]
+  # n_images: 1
+
+  contrast_low: 1.0
+  contrast_high: 99.0
+  inset_contrast_low: 1.0
+  inset_contrast_high: 99.0
+  std_overlay_percentile: 99.5
+  map_cluster_radius_lr: 2.0
+  map_patch_size_lr: 9
+
+  pixel_size_nm: 44.0
+  tol: 5.0
+  error_bins: [500, 600, 700, 800, 900]
+
+  log_threshold: 2.0
+  min_sigma: 0.75
+  max_sigma: 1.5
+  fit_enabled: false
+
+  # Any existing probe targets supported by mains/probe.py are valid.
+  probes:
+    - 2a
+    - 3a
+    - 3b
+    - 3c
+    - 2bc
+    - 2de
+    - corr
+    - detect_overlay
+    - detect_by_density
+    - 3b_map
