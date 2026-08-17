@@ -40,22 +40,46 @@ Notes:
 - `environment.yml` is the default CPU-safe environment (works on macOS).
 - `environment.gpu.yml` is intended for Linux + NVIDIA CUDA and will not work on macOS.
 
-## Plotting Workflow
+## HPC
 
-Plotting is now separated from test-time inference.
+This section covers using Apptainer/Singularity to run `cvdm-smlm` with a reproducible Ubuntu 24 + Python 3.10 container.
 
-1. Run `cvdm.mains.test` to generate stack artifacts (`x_stack.tif`, `y_stack.tif`, `z_stack.tif`).
-2. Run `cvdm.mains.plot` to render figures from saved output directories.
+### 1) Build the `.sif` from the `.def`
 
-Direct plotting without test config:
-
-- For `mode: "test"`, set `plot.output_dir` or `plot.output_dirs` to folders containing stack artifacts. Do not include `test_config`.
-- For `mode: "probe"`, set `plot.probe_output_dir` to cached probe outputs and provide inline plot settings in the `plot` block. Do not include `probe_config` or `probe_template_config`.
-
-Example commands:
+Load Apptainer on your cluster, then build from `cvdm_ubuntu24_py310.def`:
 
 ```bash
-python -m cvdm.mains.test --config-path cvdm/configs/test/test_nanoruler.yaml
-python -m cvdm.mains.plot --config cvdm/configs/plot/plot_test_nanoruler.yaml
-python -m cvdm.mains.plot --config cvdm/configs/plot/plot_probe_nanoruler.yaml
+module load apptainer
+cd /homes/seitzcx/git/cvdm-smlm
+
+# If your cluster allows unprivileged builds:
+apptainer build --fakeroot cvdm-smlm.sif cvdm_ubuntu24_py310.def
+
+# If --fakeroot is not available, ask your admin for the supported build method.
 ```
+
+### 2) Enter the container interactively
+
+Bind your project directory so files (including the venv) persist on the host:
+
+```bash
+module load apptainer
+apptainer shell --nv \
+  --bind /homes/seitzcx/git/cvdm-smlm:/workspace \
+  /homes/seitzcx/git/cvdm-smlm/cvdm-smlm.sif
+```
+
+### 3) Create a venv using container Python
+
+Inside the container shell:
+
+```bash
+python --version
+python -m venv /workspace/venv
+source /workspace/venv/bin/activate
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r /workspace/requirements.txt
+python -m pip install -e /workspace
+```
+Job submission scripts should then use this `venv` python and dependencies. 
+

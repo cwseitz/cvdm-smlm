@@ -1,3 +1,4 @@
 *.sif
 *.pyc
 cvdm/submit
+venv

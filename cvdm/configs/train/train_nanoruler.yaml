@@ -28,7 +28,7 @@ eval:
   val_len: 10
   n_iters: 1
 
-output_subdir: "cvdm_nanoruler-sim"
+output_subdir: "cvdm_nanoruler-check"
 sim_preview_count: 100
 sim_preview_path: null
 
