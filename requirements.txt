@@ -11,3 +11,4 @@ keras~=2.14.0
 tensorflow_addons~=0.22.0
 opencv-python-headless~=4.10
 cupy-cuda11x~=13.3
+matplotlib_scalebar
