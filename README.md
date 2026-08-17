@@ -17,32 +17,9 @@ This repository contains code and experiments for applying the conditional varia
 - `requirements.txt` – Python dependencies
 - `setup.py` – Package setup
 
-## Installation and basic usage
+## HPC usage
 
-Create an environment with Anaconda/Miniconda:
-
-```bash
-conda env create -f environment.yml
-conda activate cvdm-smlm
-pip install -e .
-```
-
-For Linux GPU setups with CUDA 11, use:
-
-```bash
-conda env create -f environment.gpu.yml
-conda activate cvdm-smlm-gpu
-pip install -e .
-```
-
-Notes:
-
-- `environment.yml` is the default CPU-safe environment (works on macOS).
-- `environment.gpu.yml` is intended for Linux + NVIDIA CUDA and will not work on macOS.
-
-## HPC
-
-This section covers using Apptainer/Singularity to run `cvdm-smlm` with a reproducible Ubuntu 24 + Python 3.10 container.
+This section covers using Apptainer/Singularity to run `cvdm-smlm` with a reproducible Ubuntu 24 + Python 3.10 container on an HPC. Users running on a local GPU and not using an HPC can directly create a virtual environment using `requirements.txt`.
 
 ### 1) Build the `.sif` from the `.def`
 
