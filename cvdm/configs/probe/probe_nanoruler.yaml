@@ -1,4 +1,4 @@
-output_dir: "/mnt/seitzcx/exps/exp_CVDM/probes/nanoruler-3"
+output_dir: "/mnt/seitzcx/exps/exp_CVDM/probes/csbt/nanoruler-corr"
 
 model:
   noise_model_type: "unet"
@@ -55,37 +55,11 @@ sim:
   input_upsample: 4
 
 probe:
-  probes: ["3b_map"]  # options: 2a, 3a, 3b, 3c, 2bc, 2de, corr, detect_overlay, detect_by_density, 3b_map
   densities: [20]
   n_images: 1
   n_iters: 100
   show_tqdm: true
   save_cache: true
-  use_probe_cache: true
   subtract_offset: true
   input_centering: "zscore"  # "none" or "zscore"
   cache_dir: "probe_cache"
-  detect_on: "mean"  # "mean" or "single" (does not affect 3b map)
-  inset_lr_size: 15
-  inset_hr_size: 60
-  fig3_density: 20
-  fig3_inset: [50, 50]
-  fig3_inset_in_lr: true
-  fig3_samples: [0,1,2,3]
-  std_overlay_percentile: 99.5
-  contrast_low: 1.0
-  contrast_high: 99.0
-  inset_contrast_low: 1.0
-  inset_contrast_high: 99.0
-  corr_window: 3
-  map_cluster_radius_lr: 2.0
-  map_patch_size_lr: 9
-
-metrics:
-  tol: 5.0
-  pixel_size_nm: 44.0
-  error_bins: [500, 600, 700, 800, 900]
-
-detection:
-  log_threshold: 2.0
-  fit_enabled: false

@@ -5,6 +5,7 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
+import tifffile
 import yaml
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -98,6 +99,11 @@ def _save_fig(fig: plt.Figure, output_dir: str, name: str) -> None:
     path = os.path.join(output_dir, name)
     fig.savefig(path, dpi=300)
     plt.close(fig)
+
+
+def _save_tiff_stack(stack: np.ndarray, output_dir: str, name: str) -> None:
+    path = os.path.join(output_dir, name)
+    tifffile.imwrite(path, np.asarray(stack, dtype=np.float32))
 
 
 def _scaled_limits(image: np.ndarray, low: float, high: float) -> Tuple[float, float]:
@@ -345,8 +351,17 @@ def main() -> None:
     n_images = int(probe_cfg.get("n_images", 10))
     n_iters = int(probe_cfg.get("n_iters", 5))
     show_tqdm = bool(probe_cfg.get("show_tqdm", True))
-    save_cache = bool(probe_cfg.get("save_cache", True))
-    use_probe_cache = bool(probe_cfg.get("use_probe_cache", False))
+    probe_run_mode = str(config.get("probe_run_mode", "generate"))
+    if probe_run_mode == "plot-cache":
+        save_cache = False
+        use_probe_cache = True
+    elif probe_run_mode == "generate":
+        save_cache = True
+        use_probe_cache = False
+    else:
+        raise ValueError("probe_run_mode must be one of: generate, plot-cache")
+    if "use_probe_cache" in probe_cfg:
+        print("Ignoring deprecated probe.use_probe_cache; use probe_run_mode.")
     subtract_offset = bool(probe_cfg.get("subtract_offset", False))
     input_centering = probe_cfg.get("input_centering", sim_cfg.get("input_centering", "zscore"))
     cache_dir = probe_cfg.get("cache_dir", "probe_cache")
@@ -385,6 +400,8 @@ def main() -> None:
     error_records = {str(d): [] for d in densities}
     sample_by_density: Dict[str, Dict[str, np.ndarray]] = {}
     std_records = {str(d): {"x": [], "y": []} for d in densities}
+    uncertainty_corr_records = {str(d): [] for d in densities}
+    pixel_size_nm = float(metrics_cfg.get("pixel_size_nm", 1.0))
 
     density_iter = tqdm(densities, desc="Densities") if show_tqdm else densities
     for density in density_iter:
@@ -628,6 +645,53 @@ def main() -> None:
                     std_records[str(density)]["x"].append(float(np.std(coords_arr[:, 0])))
                     std_records[str(density)]["y"].append(float(np.std(coords_arr[:, 1])))
 
+                label_uncertainty = {}
+                for label_idx, coords in per_label_coords.items():
+                    if len(coords) < 2:
+                        continue
+                    coords_arr = np.array(coords)
+                    gt_x = float(coordsgt_iter[0, int(label_idx)])
+                    gt_y = float(coordsgt_iter[1, int(label_idx)])
+                    deltas = coords_arr - np.array([gt_x, gt_y], dtype=float)
+                    err_mag = np.sqrt(np.sum(deltas ** 2, axis=1))
+                    avg_err_xy = float(np.mean(err_mag))
+                    mean_pred = np.mean(coords_arr, axis=0)
+                    mean_shift_xy = float(
+                        np.sqrt((mean_pred[0] - gt_x) ** 2 + (mean_pred[1] - gt_y) ** 2)
+                    )
+                    var_x = float(np.var(coords_arr[:, 0]))
+                    var_y = float(np.var(coords_arr[:, 1]))
+                    var_xy = var_x + var_y
+                    std_xy = float(np.sqrt(var_xy))
+                    label_uncertainty[int(label_idx)] = {
+                        "var_x_px2": var_x,
+                        "var_y_px2": var_y,
+                        "var_xy_px2": var_xy,
+                        "std_xy_px": std_xy,
+                        "avg_err_xy_px": avg_err_xy,
+                        "mean_shift_xy_px": mean_shift_xy,
+                        "n_iter_matches": int(coords_arr.shape[0]),
+                    }
+
+                for label_idx, unc in label_uncertainty.items():
+                    uncertainty_corr_records[str(density)].append(
+                        {
+                            "density": int(density),
+                            "image_idx": int(img_idx),
+                            "label_idx": int(label_idx),
+                            "n_iter_matches": int(unc["n_iter_matches"]),
+                            "err_avg_xy_px": unc["avg_err_xy_px"],
+                            "err_avg_xy_nm": unc["avg_err_xy_px"] * pixel_size_nm,
+                            "err_mean_shift_xy_px": unc["mean_shift_xy_px"],
+                            "err_mean_shift_xy_nm": unc["mean_shift_xy_px"] * pixel_size_nm,
+                            "var_x_px2": unc["var_x_px2"],
+                            "var_y_px2": unc["var_y_px2"],
+                            "var_xy_px2": unc["var_xy_px2"],
+                            "std_xy_px": unc["std_xy_px"],
+                            "std_xy_nm": unc["std_xy_px"] * pixel_size_nm,
+                        }
+                    )
+
         density_metrics[str(density)] = (np.array(precision_list), np.array(recall_list))
 
         if sample_lr is not None:
@@ -735,6 +799,62 @@ def main() -> None:
     # Figure 3a (mean/std)
     fig3_density = str(probe_cfg.get("fig3_density", densities[0]))
     sample = sample_by_density.get(fig3_density)
+
+    # Export sample stack for first cached/generated input used in plotting
+    if sample is not None and sample.get("preds") is not None and "sample_stack" in probes:
+        preds = np.asarray(sample["preds"], dtype=np.float32)
+        _save_tiff_stack(preds, output_dir, f"probe_sample_stack_density_{fig3_density}.tif")
+        if sample.get("lr") is not None:
+            lr = np.asarray(sample["lr"], dtype=np.float32)
+            _save_tiff_stack(lr[None, ...], output_dir, f"probe_sample_input_x_density_{fig3_density}.tif")
+
+        fit_enabled = bool(detection_cfg.get("fit_enabled", True))
+        pred_count = int(preds.shape[0])
+        default_frame_count = min(25, pred_count)
+        default_frames = list(range(default_frame_count))
+        montage_frames_cfg = probe_cfg.get("sample_stack_frames", default_frames)
+        montage_frames = [int(i) for i in montage_frames_cfg]
+        safe_frames = [idx for idx in montage_frames if 0 <= idx < pred_count]
+        if not safe_frames:
+            safe_frames = default_frames
+
+        max_frames = int(probe_cfg.get("sample_stack_max_frames", 25))
+        if max_frames > 0:
+            safe_frames = safe_frames[:max_frames]
+
+        n_panels = len(safe_frames)
+        if n_panels > 0:
+            n_cols = int(probe_cfg.get("sample_stack_n_cols", 5))
+            n_cols = max(1, min(n_cols, n_panels))
+            n_rows = int(math.ceil(n_panels / n_cols))
+            fig, axes = plt.subplots(n_rows, n_cols, figsize=(2.6 * n_cols, 2.6 * n_rows))
+            axes = np.array(axes).reshape(-1)
+
+            for ax_idx, frame_idx in enumerate(safe_frames):
+                ax = axes[ax_idx]
+                frame = preds[frame_idx]
+                _imshow_scaled(ax, frame, contrast_low, contrast_high)
+                spots = _detect_spots(frame, detection_cfg)
+                n_detect = 0
+                if not spots.empty:
+                    if fit_enabled and "x_mle" in spots.columns and "y_mle" in spots.columns:
+                        x_coords = spots["x_mle"].to_numpy()
+                        y_coords = spots["y_mle"].to_numpy()
+                    else:
+                        x_coords = spots["x"].to_numpy()
+                        y_coords = spots["y"].to_numpy()
+                    n_detect = int(x_coords.size)
+                    ax.scatter(y_coords, x_coords, c="red", s=10, alpha=0.85)
+                ax.set_title(f"t={frame_idx} | n={n_detect}", fontsize=8)
+                ax.set_xticks([])
+                ax.set_yticks([])
+
+            for ax_idx in range(n_panels, len(axes)):
+                axes[ax_idx].axis("off")
+
+            fig.tight_layout()
+            _save_fig(fig, output_dir, f"probe_sample_stack_detect_montage_density_{fig3_density}.png")
+
     if sample is not None and "3a" in probes:
         fig, ax = plt.subplots(2, 2, figsize=(6, 5))
         lr = sample["lr"]
@@ -1115,7 +1235,8 @@ def main() -> None:
             xstd = xstd[xstd > 0]
             ystd = ystd[ystd > 0]
             datasets.append((xstd, ystd))
-        all_values = np.concatenate([ds for pair in datasets for ds in pair if ds.size]) if datasets else np.array([])
+        non_empty_values = [ds for pair in datasets for ds in pair if ds.size]
+        all_values = np.concatenate(non_empty_values) if non_empty_values else np.array([])
         if all_values.size:
             x_min, x_max = float(np.min(all_values)), float(np.max(all_values))
             fig, axes = plt.subplots(2, len(densities), figsize=(3 * len(densities), 4), sharey='row', sharex='col')
@@ -1145,6 +1266,114 @@ def main() -> None:
             axes[1, 0].set_ylabel(r"$\mathrm{Probability}$", fontsize=12)
             plt.tight_layout()
             _save_fig(fig, output_dir, "probe_3c.png")
+
+    if "uncertainty_corr" in probes:
+        density_summary = {}
+        pooled_records = []
+        for density in densities:
+            records = uncertainty_corr_records.get(str(density), [])
+            if not records:
+                density_summary[str(density)] = {
+                    "n_spots": 0,
+                    "mean_iter_matches": float("nan"),
+                    "pearson_var_vs_err": float("nan"),
+                    "pearson_std_vs_err": float("nan"),
+                    "pearson_std_vs_mean_shift": float("nan"),
+                }
+                continue
+            pooled_records.extend(records)
+            var_vals = np.array([row["var_xy_px2"] for row in records], dtype=float)
+            std_vals = np.array([row["std_xy_nm"] for row in records], dtype=float)
+            err_vals = np.array([row["err_avg_xy_nm"] for row in records], dtype=float)
+            mean_shift_vals = np.array([row["err_mean_shift_xy_nm"] for row in records], dtype=float)
+            iter_matches = np.array([row["n_iter_matches"] for row in records], dtype=float)
+            if var_vals.size > 1 and np.std(var_vals) > 0 and np.std(err_vals) > 0:
+                corr_var = float(np.corrcoef(var_vals, err_vals)[0, 1])
+            else:
+                corr_var = float("nan")
+            if std_vals.size > 1 and np.std(std_vals) > 0 and np.std(err_vals) > 0:
+                corr_std = float(np.corrcoef(std_vals, err_vals)[0, 1])
+            else:
+                corr_std = float("nan")
+            if std_vals.size > 1 and np.std(std_vals) > 0 and np.std(mean_shift_vals) > 0:
+                corr_std_shift = float(np.corrcoef(std_vals, mean_shift_vals)[0, 1])
+            else:
+                corr_std_shift = float("nan")
+            density_summary[str(density)] = {
+                "n_spots": int(var_vals.size),
+                "mean_iter_matches": float(np.mean(iter_matches)) if iter_matches.size else float("nan"),
+                "pearson_var_vs_err": corr_var,
+                "pearson_std_vs_err": corr_std,
+                "pearson_std_vs_mean_shift": corr_std_shift,
+            }
+
+        if pooled_records:
+            pooled_var = np.array([row["var_xy_px2"] for row in pooled_records], dtype=float)
+            pooled_std = np.array([row["std_xy_nm"] for row in pooled_records], dtype=float)
+            pooled_err = np.array([row["err_avg_xy_nm"] for row in pooled_records], dtype=float)
+            pooled_shift = np.array([row["err_mean_shift_xy_nm"] for row in pooled_records], dtype=float)
+            pooled_iter_matches = np.array([row["n_iter_matches"] for row in pooled_records], dtype=float)
+            if pooled_var.size > 1 and np.std(pooled_var) > 0 and np.std(pooled_err) > 0:
+                pooled_corr_var = float(np.corrcoef(pooled_var, pooled_err)[0, 1])
+            else:
+                pooled_corr_var = float("nan")
+            if pooled_std.size > 1 and np.std(pooled_std) > 0 and np.std(pooled_err) > 0:
+                pooled_corr_std = float(np.corrcoef(pooled_std, pooled_err)[0, 1])
+            else:
+                pooled_corr_std = float("nan")
+            if pooled_std.size > 1 and np.std(pooled_std) > 0 and np.std(pooled_shift) > 0:
+                pooled_corr_std_shift = float(np.corrcoef(pooled_std, pooled_shift)[0, 1])
+            else:
+                pooled_corr_std_shift = float("nan")
+        else:
+            pooled_corr_var = float("nan")
+            pooled_corr_std = float("nan")
+            pooled_corr_std_shift = float("nan")
+            pooled_iter_matches = np.array([], dtype=float)
+
+        summary = {
+            "metric_description": {
+                "x": "per-spot sampling std sqrt(var_u + var_v) (nm)",
+                "y": "per-spot average localization error over CVDM samples (nm)",
+                "pixel_size_nm": pixel_size_nm,
+                "supplemental": "also reports std-vs-posterior-mean-shift and variance-vs-avg-error correlations",
+            },
+            "per_density": density_summary,
+            "pooled": {
+                "n_spots": int(len(pooled_records)),
+                "mean_iter_matches": float(np.mean(pooled_iter_matches)) if pooled_iter_matches.size else float("nan"),
+                "pearson_var_vs_err": pooled_corr_var,
+                "pearson_std_vs_err": pooled_corr_std,
+                "pearson_std_vs_mean_shift": pooled_corr_std_shift,
+            },
+        }
+        with open(os.path.join(output_dir, "probe_uncertainty_corr_summary.yaml"), "w", encoding="utf-8") as handle:
+            yaml.safe_dump(summary, handle, sort_keys=False)
+
+        if pooled_records:
+            df_unc = pd.DataFrame(pooled_records)
+            df_unc.to_csv(os.path.join(output_dir, "probe_uncertainty_corr.csv"), index=False)
+
+        fig, axes = plt.subplots(1, len(densities), figsize=(4 * len(densities), 4), squeeze=False)
+        axes = axes[0]
+        x_label = r"$\sigma_{\mathrm{CVDM}}$ per spot (nm)"
+        y_label = r"$\bar{\epsilon}$ per spot (nm)"
+        for idx, density in enumerate(densities):
+            ax = axes[idx]
+            records = uncertainty_corr_records.get(str(density), [])
+            if not records:
+                ax.axis("off")
+                continue
+            std_vals = np.array([row["std_xy_nm"] for row in records], dtype=float)
+            err_vals = np.array([row["err_avg_xy_nm"] for row in records], dtype=float)
+            ax.scatter(std_vals, err_vals, s=12, alpha=0.7, c="black", edgecolors="none")
+            ax.set_xlabel(x_label)
+            if idx == 0:
+                ax.set_ylabel(y_label)
+            ax.grid(alpha=0.3)
+
+        fig.tight_layout()
+        _save_fig(fig, output_dir, "probe_uncertainty_corr.png")
 
     # Detection overlays per density
     if "detect_by_density" in probes:

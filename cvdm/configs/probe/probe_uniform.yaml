@@ -1,9 +1,9 @@
-output_dir: "/mnt/seitzcx/exps/exp_CVDM/probes/quartz-3"
+output_dir: "/mnt/seitzcx/exps/exp_CVDM/probes/csbt/uniform-corr-n100-sigma1"
 
 model:
   noise_model_type: "unet"
   alpha: 0.001
-  load_weights: "/mnt/seitzcx/exps/exp_CVDM/models/cvdm_nanoruler-sim-sigma2/weights/model_12000_addb3022-81d7-47d4-8e97-6c3053fc1080.h5"
+  load_weights: "/mnt/seitzcx/exps/exp_CVDM/models/csbt/cvdm_uniform-n100-sigma1/weights/model_12000_106a78ec-ce0d-4223-bdbe-e3f50f282e38.h5"
   load_mu_weights: null
   # Optional per-density weight overrides (keys must match `probe.densities` as strings)
   # load_weights_map:
@@ -37,37 +37,25 @@ sim:
   offset: 100.0
   var: 5.0
   halo_alpha: 0.0
-  halo_sigma: 4.0
+  #halo_sigma: 4.0
   grf_alpha: 0.0
-  grf_sigma: 10.0
+  #grf_sigma: 10.0
   grf_seed: null
   label_upsample: 4
   label_sigma: 2.0
-  label_scale: 1.0
-  label_centering: false
+  label_scale: 100.0
+  label_centering: true
   input_upsample: 4
 
 probe:
-  densities: [100, 200, 500]
-  n_images: 5
-  n_iters: 5
+  densities: [100]
+  n_images: 1
+  n_iters: 100
   show_tqdm: true
   save_cache: true
-  use_probe_cache: false
-  subtract_offset: true
-  input_centering: "none"  # "none" or "zscore"
+  subtract_offset: false
+  input_centering: "zscore"  # "none" or "zscore"
   cache_dir: "probe_cache"
-  detect_on: "mean"  # "mean" or "single"
-  inset_lr_size: 15
-  inset_hr_size: 60
-  fig3_inset: [50, 50]
-  fig3_inset_in_lr: true
-  fig3_samples: [0, 1, 4, 5]
-  inset_contrast_low: 1.0
-  inset_contrast_high: 99.0
-  std_overlay_percentile: 80.0
-  contrast_low: 1.0
-  contrast_high: 99.0
 
 metrics:
   tol: 5.0

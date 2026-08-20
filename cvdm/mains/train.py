@@ -174,36 +174,43 @@ def build_sim_dataset(
                 grf_sigma_val = float(sim_cfg.get("grf_sigma", 0.0))
             grf_seed_val = sim_cfg.get("grf_seed", None)
 
-            adu, spikes, theta = generator.forward(
-                nspots=nspots,
-                sigma=float(sim_cfg.get("sigma", 0.92)),
-                texp=float(sim_cfg.get("texp", 1.0)),
-                N0_min=float(sim_cfg.get("N0_min", 500.0)),
-                N0_max=float(sim_cfg.get("N0_max", 1000.0)),
-                eta=float(sim_cfg.get("eta", 1.0)),
-                gain=float(sim_cfg.get("gain", 1.0)),
-                B0=b0_val,
-                nframes=1,
-                offset=float(sim_cfg.get("offset", 100.0)),
-                var=float(sim_cfg.get("var", 5.0)),
-                spacing_px=spacing_px_val,
-                spacing_nm=sim_cfg.get("spacing_nm", None),
-                pixel_size_nm=sim_cfg.get("pixel_size_nm", None),
-                edgew=float(sim_cfg.get("edgew", 5.0)),
-                position_sigma=float(sim_cfg.get("position_sigma", 0.0)),
-                pattern=sim_cfg.get("pattern", "uniform"),
-                parent_rate=sim_cfg.get("parent_rate", None),
-                parent_count=sim_cfg.get("parent_count", None),
-                children_sigma=float(sim_cfg.get("children_sigma", 1.0)),
-                children_min=int(sim_cfg.get("children_min", 0)),
-                children_pmf=sim_cfg.get("children_pmf", None),
-                burst_prob=sim_cfg.get("burst_prob", None),
-                halo_alpha=float(sim_cfg.get("halo_alpha", 0.0)),
-                halo_sigma=float(sim_cfg.get("halo_sigma", 0.0)),
-                grf_alpha=float(sim_cfg.get("grf_alpha", 0.0)),
-                grf_sigma=grf_sigma_val,
-                grf_seed=grf_seed_val,
-            )
+            sim_forward_kwargs = {
+                "nspots": nspots,
+                "sigma": float(sim_cfg.get("sigma", 0.92)),
+                "texp": float(sim_cfg.get("texp", 1.0)),
+                "N0_min": float(sim_cfg.get("N0_min", 500.0)),
+                "N0_max": float(sim_cfg.get("N0_max", 1000.0)),
+                "eta": float(sim_cfg.get("eta", 1.0)),
+                "gain": float(sim_cfg.get("gain", 1.0)),
+                "B0": b0_val,
+                "nframes": 1,
+                "offset": float(sim_cfg.get("offset", 100.0)),
+                "var": float(sim_cfg.get("var", 5.0)),
+                "halo_alpha": float(sim_cfg.get("halo_alpha", 0.0)),
+                "halo_sigma": float(sim_cfg.get("halo_sigma", 0.0)),
+                "grf_alpha": float(sim_cfg.get("grf_alpha", 0.0)),
+                "grf_sigma": grf_sigma_val,
+                "grf_seed": grf_seed_val,
+            }
+            if generator_cls is Nanoruler2D:
+                sim_forward_kwargs.update(
+                    {
+                        "spacing_px": spacing_px_val,
+                        "spacing_nm": sim_cfg.get("spacing_nm", None),
+                        "pixel_size_nm": sim_cfg.get("pixel_size_nm", None),
+                        "edgew": float(sim_cfg.get("edgew", 5.0)),
+                        "position_sigma": float(sim_cfg.get("position_sigma", 0.0)),
+                        "pattern": sim_cfg.get("pattern", "uniform"),
+                        "parent_rate": sim_cfg.get("parent_rate", None),
+                        "parent_count": sim_cfg.get("parent_count", None),
+                        "children_sigma": float(sim_cfg.get("children_sigma", 1.0)),
+                        "children_min": int(sim_cfg.get("children_min", 0)),
+                        "children_pmf": sim_cfg.get("children_pmf", None),
+                        "burst_prob": sim_cfg.get("burst_prob", None),
+                    }
+                )
+
+            adu, spikes, theta = generator.forward(**sim_forward_kwargs)
             if adu.ndim == 3:
                 adu = adu[0]
                 spikes = spikes[0]
@@ -436,36 +443,43 @@ def main() -> None:
                 grf_sigma_val = float(sim_cfg.get("grf_sigma", 0.0))
             grf_seed_val = sim_cfg.get("grf_seed", None)
 
-            adu, _, _ = sim_generator.forward(
-                nspots=nspots,
-                sigma=float(sim_cfg.get("sigma", 0.92)),
-                texp=float(sim_cfg.get("texp", 1.0)),
-                N0_min=float(sim_cfg.get("N0_min", 500.0)),
-                N0_max=float(sim_cfg.get("N0_max", 1000.0)),
-                eta=float(sim_cfg.get("eta", 1.0)),
-                gain=float(sim_cfg.get("gain", 1.0)),
-                B0=b0_val,
-                nframes=1,
-                offset=float(sim_cfg.get("offset", 100.0)),
-                var=float(sim_cfg.get("var", 5.0)),
-                spacing_px=spacing_px_val,
-                spacing_nm=sim_cfg.get("spacing_nm", None),
-                pixel_size_nm=sim_cfg.get("pixel_size_nm", None),
-                edgew=float(sim_cfg.get("edgew", 5.0)),
-                position_sigma=float(sim_cfg.get("position_sigma", 0.0)),
-                pattern=sim_cfg.get("pattern", "uniform"),
-                parent_rate=sim_cfg.get("parent_rate", None),
-                parent_count=sim_cfg.get("parent_count", None),
-                children_sigma=float(sim_cfg.get("children_sigma", 1.0)),
-                children_min=int(sim_cfg.get("children_min", 0)),
-                children_pmf=sim_cfg.get("children_pmf", None),
-                burst_prob=sim_cfg.get("burst_prob", None),
-                halo_alpha=float(sim_cfg.get("halo_alpha", 0.0)),
-                halo_sigma=float(sim_cfg.get("halo_sigma", 0.0)),
-                grf_alpha=float(sim_cfg.get("grf_alpha", 0.0)),
-                grf_sigma=grf_sigma_val,
-                grf_seed=grf_seed_val,
-            )
+            sim_forward_kwargs = {
+                "nspots": nspots,
+                "sigma": float(sim_cfg.get("sigma", 0.92)),
+                "texp": float(sim_cfg.get("texp", 1.0)),
+                "N0_min": float(sim_cfg.get("N0_min", 500.0)),
+                "N0_max": float(sim_cfg.get("N0_max", 1000.0)),
+                "eta": float(sim_cfg.get("eta", 1.0)),
+                "gain": float(sim_cfg.get("gain", 1.0)),
+                "B0": b0_val,
+                "nframes": 1,
+                "offset": float(sim_cfg.get("offset", 100.0)),
+                "var": float(sim_cfg.get("var", 5.0)),
+                "halo_alpha": float(sim_cfg.get("halo_alpha", 0.0)),
+                "halo_sigma": float(sim_cfg.get("halo_sigma", 0.0)),
+                "grf_alpha": float(sim_cfg.get("grf_alpha", 0.0)),
+                "grf_sigma": grf_sigma_val,
+                "grf_seed": grf_seed_val,
+            }
+            if sim_generator_cls is Nanoruler2D:
+                sim_forward_kwargs.update(
+                    {
+                        "spacing_px": spacing_px_val,
+                        "spacing_nm": sim_cfg.get("spacing_nm", None),
+                        "pixel_size_nm": sim_cfg.get("pixel_size_nm", None),
+                        "edgew": float(sim_cfg.get("edgew", 5.0)),
+                        "position_sigma": float(sim_cfg.get("position_sigma", 0.0)),
+                        "pattern": sim_cfg.get("pattern", "uniform"),
+                        "parent_rate": sim_cfg.get("parent_rate", None),
+                        "parent_count": sim_cfg.get("parent_count", None),
+                        "children_sigma": float(sim_cfg.get("children_sigma", 1.0)),
+                        "children_min": int(sim_cfg.get("children_min", 0)),
+                        "children_pmf": sim_cfg.get("children_pmf", None),
+                        "burst_prob": sim_cfg.get("burst_prob", None),
+                    }
+                )
+
+            adu, _, _ = sim_generator.forward(**sim_forward_kwargs)
             if adu.ndim == 3:
                 adu = adu[0]
             x = adu.astype(np.float32)
@@ -636,36 +650,43 @@ def main() -> None:
                         grf_sigma_val = float(sim_cfg.get("grf_sigma", 0.0))
                     grf_seed_val = sim_cfg.get("grf_seed", None)
 
-                    adu, spikes, theta = sim_generator.forward(
-                        nspots=nspots,
-                        sigma=float(sim_cfg.get("sigma", 0.92)),
-                        texp=float(sim_cfg.get("texp", 1.0)),
-                        N0_min=float(sim_cfg.get("N0_min", 500.0)),
-                        N0_max=float(sim_cfg.get("N0_max", 1000.0)),
-                        eta=float(sim_cfg.get("eta", 1.0)),
-                        gain=float(sim_cfg.get("gain", 1.0)),
-                        B0=b0_val,
-                        nframes=1,
-                        offset=float(sim_cfg.get("offset", 100.0)),
-                        var=float(sim_cfg.get("var", 5.0)),
-                        spacing_px=spacing_px_val,
-                        spacing_nm=sim_cfg.get("spacing_nm", None),
-                        pixel_size_nm=sim_cfg.get("pixel_size_nm", None),
-                        edgew=float(sim_cfg.get("edgew", 5.0)),
-                        position_sigma=float(sim_cfg.get("position_sigma", 0.0)),
-                        pattern=sim_cfg.get("pattern", "uniform"),
-                        parent_rate=sim_cfg.get("parent_rate", None),
-                        parent_count=sim_cfg.get("parent_count", None),
-                        children_sigma=float(sim_cfg.get("children_sigma", 1.0)),
-                        children_min=int(sim_cfg.get("children_min", 0)),
-                        children_pmf=sim_cfg.get("children_pmf", None),
-                        burst_prob=sim_cfg.get("burst_prob", None),
-                        halo_alpha=float(sim_cfg.get("halo_alpha", 0.0)),
-                        halo_sigma=float(sim_cfg.get("halo_sigma", 0.0)),
-                        grf_alpha=float(sim_cfg.get("grf_alpha", 0.0)),
-                        grf_sigma=grf_sigma_val,
-                        grf_seed=grf_seed_val,
-                    )
+                    sim_forward_kwargs = {
+                        "nspots": nspots,
+                        "sigma": float(sim_cfg.get("sigma", 0.92)),
+                        "texp": float(sim_cfg.get("texp", 1.0)),
+                        "N0_min": float(sim_cfg.get("N0_min", 500.0)),
+                        "N0_max": float(sim_cfg.get("N0_max", 1000.0)),
+                        "eta": float(sim_cfg.get("eta", 1.0)),
+                        "gain": float(sim_cfg.get("gain", 1.0)),
+                        "B0": b0_val,
+                        "nframes": 1,
+                        "offset": float(sim_cfg.get("offset", 100.0)),
+                        "var": float(sim_cfg.get("var", 5.0)),
+                        "halo_alpha": float(sim_cfg.get("halo_alpha", 0.0)),
+                        "halo_sigma": float(sim_cfg.get("halo_sigma", 0.0)),
+                        "grf_alpha": float(sim_cfg.get("grf_alpha", 0.0)),
+                        "grf_sigma": grf_sigma_val,
+                        "grf_seed": grf_seed_val,
+                    }
+                    if sim_generator_cls is Nanoruler2D:
+                        sim_forward_kwargs.update(
+                            {
+                                "spacing_px": spacing_px_val,
+                                "spacing_nm": sim_cfg.get("spacing_nm", None),
+                                "pixel_size_nm": sim_cfg.get("pixel_size_nm", None),
+                                "edgew": float(sim_cfg.get("edgew", 5.0)),
+                                "position_sigma": float(sim_cfg.get("position_sigma", 0.0)),
+                                "pattern": sim_cfg.get("pattern", "uniform"),
+                                "parent_rate": sim_cfg.get("parent_rate", None),
+                                "parent_count": sim_cfg.get("parent_count", None),
+                                "children_sigma": float(sim_cfg.get("children_sigma", 1.0)),
+                                "children_min": int(sim_cfg.get("children_min", 0)),
+                                "children_pmf": sim_cfg.get("children_pmf", None),
+                                "burst_prob": sim_cfg.get("burst_prob", None),
+                            }
+                        )
+
+                    adu, spikes, theta = sim_generator.forward(**sim_forward_kwargs)
                     if adu.ndim == 3:
                         adu = adu[0]
                     x = adu.astype(np.float32)

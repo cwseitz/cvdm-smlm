@@ -3,7 +3,7 @@ task: "SMLM"
 model:
   noise_model_type: "unet"
   alpha: 0.001
-  load_weights: "/mnt/seitzcx/exps/exp_CVDM/models/cvdm_nanoruler-sim-sigma2/weights/model_12000_addb3022-81d7-47d4-8e97-6c3053fc1080.h5" 
+  load_weights: "/mnt/seitzcx/exps/exp_CVDM/models/cvdm_sz64_n1000_N100-501_tubes_quartz/weights/model_12000_f08ace5a-7ccd-4077-993b-b739702358df.h5" 
   load_mu_weights: null
   snr_expansion_n: 1
   zmd: False
@@ -19,15 +19,15 @@ eval:
   n_iters: 100
 
 test:
-  results_dir: "/mnt/seitzcx/exps/exp_CVDM/results"
+  results_dir: "/mnt/seitzcx/exps/exp_CVDM/results/csbt"
   data_dir: "/mnt/seitzcx/exps/exp_CVDM/data"
   prefixes:
-    - cvdm_sz64_nanoruler_94-high
-  output_dir_name: "cvdm_sz64_nanoruler_94-high"
+    - cvdm_sz64_n15k_long_sum5
+  output_dir_name: "cvdm_sz64_n15k_long_sum5-100it"
   stack_name: "lr-1x.tif"
-  n_frames: null
+  n_frames: 1
   input_upsample: 4
   subtract_offset: false
   offset: 0.0
-  input_centering: "zscore"  # "none" or "zscore"
+  input_centering: "none"  # "none" or "zscore"
 

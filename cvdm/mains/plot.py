@@ -1151,6 +1151,7 @@ def _build_probe_runtime_config(plot_cfg: Dict) -> Dict:
     n_images = int(plot_cfg.get("n_images", inferred_n_images))
 
     return {
+        "probe_run_mode": "plot-cache",
         "output_dir": output_dir,
         "model": {
             "noise_model_type": "unet",
@@ -1185,8 +1186,6 @@ def _build_probe_runtime_config(plot_cfg: Dict) -> Dict:
             "n_images": n_images,
             "n_iters": int(plot_cfg.get("n_iters", 100)),
             "show_tqdm": bool(plot_cfg.get("show_tqdm", True)),
-            "save_cache": False,
-            "use_probe_cache": True,
             "subtract_offset": bool(plot_cfg.get("subtract_offset", False)),
             "input_centering": plot_cfg.get("input_centering", "zscore"),
             "cache_dir": cache_dir,

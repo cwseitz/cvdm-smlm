@@ -2,40 +2,39 @@ mode: "probe"
 
 plot:
   # Figures are written under this directory.
-  probe_output_dir: "/mnt/seitzcx/exps/exp_CVDM/probes/csbt/nanoruler-corr"
+  probe_output_dir: "/mnt/seitzcx/exps/exp_CVDM/probes/csbt/uniform-corr-n100-sigma1"
 
   # Cache source can be relative to probe_output_dir (default) or absolute.
-  # probe_cache_dir: "/path/to/existing/probe_cache"
   cache_dir: "probe_cache"
-  generator: "Nanoruler2D"
+  generator: "Uniform2D"
   size: 64
   input_upsample: 4
   label_upsample: 4
   label_sigma: 2.0
-  label_scale: 100.0
-  label_centering: true
-  sigma: 1.23
+  label_scale: 1.0
+  label_centering: false
+  sigma: 1.0
 
   # Optional: override inferred densities/sample count from cache folders.
-  # densities: [20]
-  # n_images: 1
+  # densities: [100, 200, 500]
+  # n_images: 5
 
   contrast_low: 1.0
   contrast_high: 99.0
   inset_contrast_low: 1.0
   inset_contrast_high: 99.0
-  std_overlay_percentile: 99.5
+  std_overlay_percentile: 80.0
   map_cluster_radius_lr: 2.0
   map_patch_size_lr: 9
 
-  pixel_size_nm: 44.0
+  pixel_size_nm: 25.0
   tol: 5.0
   error_bins: [500, 600, 700, 800, 900]
 
-  log_threshold: 2.0
+  log_threshold: 0.2
   min_sigma: 0.75
   max_sigma: 1.5
-  fit_enabled: false
+  fit_enabled: true
 
   # Any existing probe targets supported by mains/probe.py are valid.
   probes:

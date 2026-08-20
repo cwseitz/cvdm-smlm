@@ -11,7 +11,7 @@ model:
 
 training:
   lr: 0.0001
-  epochs: 50
+  epochs: 150
 
 # Number of batches drawn per epoch from the on-the-fly simulator
 steps_per_epoch: 200
@@ -19,7 +19,7 @@ steps_per_epoch: 200
 val_steps: 10
 
 eval:
-  output_path: "/mnt/seitzcx/exps/exp_CVDM/models/"
+  output_path: "/mnt/seitzcx/exps/exp_CVDM/models/csbt"
   generation_timesteps: 200
   checkpoint_freq: 1000
   log_freq: 100
@@ -28,7 +28,7 @@ eval:
   val_len: 10
   n_iters: 1
 
-output_subdir: "cvdm_uniform-sim"
+output_subdir: "cvdm_uniform-n100-sigma1"
 sim_preview_count: 100
 sim_preview_path: null
 
@@ -43,23 +43,23 @@ data:
 sim:
   generator: "Uniform2D"
   size: null
-  nspots_min: 1
-  nspots_max: 20
-  sigma: 1.23
+  nspots_min: 100
+  nspots_max: 101
+  sigma: 1.0
   texp: 1.0
   N0_min: 500.0
-  N0_max: 5000.0
+  N0_max: 1000.0
   eta: 1.0
-  gain: 3.92
-  B0_min: 100.0
-  B0_max: 300.0
+  gain: 1.0
+  B0_min: 0.0
+  B0_max: 0.0
   offset: 100.0
-  var: 24.1
-  halo_alpha: 1.0
-  halo_sigma: 4.0
-  grf_alpha: 1.0
-  grf_sigma_min: 5.0
-  grf_sigma_max: 20.0
+  var: 5.0
+  halo_alpha: 0.0
+  #halo_sigma: 4.0
+  grf_alpha: 0.0
+  #grf_sigma_min: 5.0
+  #grf_sigma_max: 20.0
   grf_seed: null
   label_type: "kde"  # "kde", "spikes", or "mu_s"
   label_upsample: 4

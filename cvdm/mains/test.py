@@ -55,9 +55,30 @@ def main() -> None:
         results_dir = test_cfg.get("results_dir")
         if not data_dir or not results_dir:
             raise ValueError("test.data_dir and test.results_dir must be set when using test.prefixes.")
+        output_names = test_cfg.get("output_names")
+        output_dir_name = test_cfg.get("output_dir_name")
+        if output_names is not None:
+            if len(output_names) != len(test_prefixes):
+                raise ValueError(
+                    "test.output_names must have the same length as test.prefixes."
+                )
+            resolved_output_names = [str(name) for name in output_names]
+        elif output_dir_name is not None:
+            if len(test_prefixes) != 1:
+                raise ValueError(
+                    "test.output_dir_name is only supported with a single prefix; "
+                    "use test.output_names for multiple prefixes."
+                )
+            resolved_output_names = [str(output_dir_name)]
+        else:
+            resolved_output_names = [str(name) for name in test_prefixes]
         dataset_items = [
-            (name, os.path.join(data_dir, name), os.path.join(results_dir, name))
-            for name in test_prefixes
+            (
+                prefix,
+                os.path.join(data_dir, prefix),
+                os.path.join(results_dir, output_name),
+            )
+            for prefix, output_name in zip(test_prefixes, resolved_output_names)
         ]
     elif dataset_names:
         data_base_path = config.get("data", {}).get("dataset_base_path")
@@ -175,9 +196,6 @@ def _run_experimental_stack(
     stack_name = test_cfg.get("stack_name", "lr-1x.tif")
     stack_path = os.path.join(dataset_path, stack_name)
     n_frames = test_cfg.get("n_frames")
-    skip_inference = bool(test_cfg.get("skip_inference", False))
-    if skip_inference:
-        return
 
     lr_stack = imread(stack_path)
     if lr_stack.ndim == 2:
