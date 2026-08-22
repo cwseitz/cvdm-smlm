@@ -22,9 +22,9 @@ test:
   results_dir: "/mnt/seitzcx/exps/exp_CVDM/results/csbt"
   data_dir: "/mnt/seitzcx/exps/exp_CVDM/data"
   prefixes:
-    - cvdm_sz64_n15k_long_sum5
-  output_dir_name: "cvdm_sz64_n15k_long_sum5-100it"
-  stack_name: "lr-1x.tif"
+    - cvdm_sz64_n500_high_d
+  output_dir_name: "cvdm_sz64_n500_high_d-100it"
+  stack_name: "lr-1x-crop.tif"
   n_frames: 1
   input_upsample: 4
   subtract_offset: false

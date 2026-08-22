@@ -1,6 +1,6 @@
 import argparse
 import os
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -77,6 +77,8 @@ def _normalize_frame_stack(arr: np.ndarray, source: str) -> np.ndarray:
             return arr.astype(np.float32)
         return arr.astype(np.float32)
     if arr.ndim == 4:
+        if arr.shape[0] == 1:
+            return arr[0].astype(np.float32)
         if arr.shape[1] == 1:
             return arr[:, 0, :, :].astype(np.float32)
         if arr.shape[-1] == 1:
@@ -116,6 +118,32 @@ def _load_z_frames(results_dir: str) -> np.ndarray:
     return np.stack(frames, axis=0)
 
 
+def _load_x_stack_image(results_dir: str) -> np.ndarray:
+    x_path = os.path.join(results_dir, "x_stack.tif")
+    if not os.path.exists(x_path):
+        raise FileNotFoundError(f"Missing x_stack.tif: {x_path}")
+    arr = np.asarray(imread(x_path))
+    arr = np.squeeze(arr)
+    if arr.ndim == 2:
+        return arr.astype(np.float32)
+    if arr.ndim == 3:
+        return arr[0].astype(np.float32)
+    raise ValueError(f"Unsupported x_stack shape from {x_path}: {arr.shape}")
+
+
+def _rescale_coords(coords: np.ndarray, src_shape: Tuple[int, int], dst_shape: Tuple[int, int]) -> np.ndarray:
+    if coords.size == 0:
+        return coords
+    src_h, src_w = float(src_shape[0]), float(src_shape[1])
+    dst_h, dst_w = float(dst_shape[0]), float(dst_shape[1])
+    scale_x = dst_h / src_h
+    scale_y = dst_w / src_w
+    out = coords.astype(np.float32).copy()
+    out[:, 0] *= scale_x
+    out[:, 1] *= scale_y
+    return out
+
+
 def _frame_to_rgb(frame: np.ndarray) -> np.ndarray:
     f = frame.astype(np.float32)
     lo = float(np.percentile(f, 1.0))
@@ -142,6 +170,17 @@ def _draw_points_overlay(rgb: np.ndarray, coords: np.ndarray) -> np.ndarray:
             if 0 <= x < h and 0 <= yi < w:
                 out[x, yi] = np.array([255, 0, 0], dtype=np.uint8)
     return out
+
+
+def _imshow_percentile_gray(ax: plt.Axes, image: np.ndarray, low: float = 1.0, high: float = 99.5) -> None:
+    img = np.asarray(image, dtype=np.float32)
+    vmin, vmax = np.percentile(img, [low, high])
+    if not np.isfinite(vmin) or not np.isfinite(vmax) or vmax <= vmin:
+        vmin = float(np.min(img))
+        vmax = float(np.max(img))
+    if vmax <= vmin:
+        vmax = vmin + 1e-6
+    ax.imshow(img, cmap="gray", vmin=vmin, vmax=vmax)
 
 
 def _save_detection_gif(
@@ -220,6 +259,55 @@ def _build_cvdm_render_from_detections(
     if len(frames) > 0:
         accum /= float(len(frames))
     return accum, all_detections
+
+
+def _aggregate_detection_coords(
+    frames: np.ndarray,
+    threshold: float,
+    min_sigma: float,
+    max_sigma: float,
+    max_spots_per_frame: int,
+    median_filter_radius_px: int,
+    fit_enabled: bool,
+) -> np.ndarray:
+    all_coords: List[np.ndarray] = []
+    for frame in frames:
+        frame_for_detection = frame
+        if median_filter_radius_px > 0:
+            frame_for_detection = median(frame_for_detection, footprint=disk(median_filter_radius_px))
+
+        det = PipelineMLE2D(frame_for_detection[None, ...]).localize(
+            threshold=threshold,
+            min_sigma=min_sigma,
+            max_sigma=max_sigma,
+            fit_enabled=fit_enabled,
+            show_tqdm=False,
+        )
+        if det.empty:
+            continue
+        if max_spots_per_frame > 0 and len(det) > max_spots_per_frame and "peak" in det.columns:
+            det = det.sort_values("peak", ascending=False).head(max_spots_per_frame)
+
+        if fit_enabled and "x_mle" in det.columns and "y_mle" in det.columns:
+            coords = det[["x_mle", "y_mle"]].to_numpy(dtype=np.float32)
+        else:
+            coords = det[["x", "y"]].to_numpy(dtype=np.float32)
+        if coords.size:
+            all_coords.append(coords)
+
+    if not all_coords:
+        return np.empty((0, 2), dtype=np.float32)
+    return np.concatenate(all_coords, axis=0).astype(np.float32)
+
+
+def _roll_coords(coords: np.ndarray, shape: Tuple[int, int], axis0_shift: int, axis1_shift: int) -> np.ndarray:
+    if coords.size == 0:
+        return coords
+    h, w = int(shape[0]), int(shape[1])
+    out = coords.copy()
+    out[:, 0] = np.mod(out[:, 0] + axis0_shift, h)
+    out[:, 1] = np.mod(out[:, 1] + axis1_shift, w)
+    return out
 
 
 def _detections_to_napari_points(detections: List[np.ndarray]) -> np.ndarray:
@@ -548,6 +636,8 @@ def run_figure_4cd(config: Dict[str, Any]) -> None:
         raise KeyError("paths.hd_dir and paths.ls_dir are required")
     path_hd_results = paths_cfg.get("hd_results_dir", paths_cfg.get("high_density_results_dir", path_hd))
     path_ls_results = paths_cfg.get("ls_results_dir", paths_cfg.get("long_sequence_results_dir", path_ls))
+    path_hd_100it = paths_cfg.get("hd_100it_dir", None)
+    path_ls_100it = paths_cfg.get("ls_100it_dir", None)
     output_dir = paths_cfg["output_dir"]
     os.makedirs(output_dir, exist_ok=True)
 
@@ -591,12 +681,80 @@ def run_figure_4cd(config: Dict[str, Any]) -> None:
     ])).astype(np.float32)
 
     ls_roll = fig_cfg.get("ls_cvdm_roll", [0, 1])
+    detect_cfg = fig_cfg.get("detection", {})
+    threshold = float(detect_cfg.get("log_threshold", 0.1))
+    min_sigma = float(detect_cfg.get("min_sigma", 0.75))
+    max_sigma = float(detect_cfg.get("max_sigma", 1.5))
+    max_spots_per_frame = int(detect_cfg.get("max_spots_per_frame", 0))
+    median_filter_radius_px = int(detect_cfg.get("median_filter_radius_px", 0))
+    fit_enabled = bool(detect_cfg.get("fit_enabled", False))
+    overlay_dot_size = float(fig_cfg.get("overlay_dot_size", 6.0))
+    overlay_alpha = float(fig_cfg.get("overlay_alpha", 0.7))
+    sum_100it_display_threshold = fig_cfg.get("sum_100it_display_threshold", None)
+    if sum_100it_display_threshold is not None:
+        sum_100it_display_threshold = float(sum_100it_display_threshold)
+
+    ls_cvdm_100it: Optional[np.ndarray] = None
+    hd_cvdm_100it: Optional[np.ndarray] = None
+    ls_x_100it: Optional[np.ndarray] = None
+    hd_x_100it: Optional[np.ndarray] = None
+    ls_100it_src_shape: Optional[Tuple[int, int]] = None
+    hd_100it_src_shape: Optional[Tuple[int, int]] = None
+    ls_100it_coords = np.empty((0, 2), dtype=np.float32)
+    hd_100it_coords = np.empty((0, 2), dtype=np.float32)
+    ls_100it_coords_raw = np.empty((0, 2), dtype=np.float32)
+    hd_100it_coords_raw = np.empty((0, 2), dtype=np.float32)
+
+    if path_ls_100it:
+        ls_100it_frames = _load_z_frames(path_ls_100it)
+        ls_100it_src_shape = (int(ls_100it_frames.shape[1]), int(ls_100it_frames.shape[2]))
+        ls_x_100it = _load_x_stack_image(path_ls_100it)
+        ls_cvdm_100it = np.sum(ls_100it_frames, axis=0).astype(np.float32)
+        ls_100it_coords = _aggregate_detection_coords(
+            frames=ls_100it_frames,
+            threshold=threshold,
+            min_sigma=min_sigma,
+            max_sigma=max_sigma,
+            max_spots_per_frame=max_spots_per_frame,
+            median_filter_radius_px=median_filter_radius_px,
+            fit_enabled=fit_enabled,
+        )
+        ls_100it_coords_raw = ls_100it_coords.copy()
+
+    if path_hd_100it:
+        hd_100it_frames = _load_z_frames(path_hd_100it)
+        hd_100it_src_shape = (int(hd_100it_frames.shape[1]), int(hd_100it_frames.shape[2]))
+        hd_x_100it = _load_x_stack_image(path_hd_100it)
+        hd_cvdm_100it = np.sum(hd_100it_frames, axis=0).astype(np.float32)
+        hd_100it_coords = _aggregate_detection_coords(
+            frames=hd_100it_frames,
+            threshold=threshold,
+            min_sigma=min_sigma,
+            max_sigma=max_sigma,
+            max_spots_per_frame=max_spots_per_frame,
+            median_filter_radius_px=median_filter_radius_px,
+            fit_enabled=fit_enabled,
+        )
+        hd_100it_coords_raw = hd_100it_coords.copy()
+
     ls_cvdm = np.roll(ls_cvdm, int(ls_roll[1]), axis=int(ls_roll[0]))
+    if ls_cvdm_100it is not None:
+        ls_cvdm_100it = np.roll(ls_cvdm_100it, int(ls_roll[1]), axis=int(ls_roll[0]))
+        if ls_100it_coords.size:
+            if int(ls_roll[0]) == 0:
+                ls_100it_coords = _roll_coords(ls_100it_coords, ls_cvdm_100it.shape, int(ls_roll[1]), 0)
+            else:
+                ls_100it_coords = _roll_coords(ls_100it_coords, ls_cvdm_100it.shape, 0, int(ls_roll[1]))
 
     hd_roll_axis0 = int(fig_cfg.get("hd_cvdm_roll_axis0", 5))
     hd_roll_axis1 = int(fig_cfg.get("hd_cvdm_roll_axis1", 4))
     hd_cvdm = np.roll(hd_cvdm, hd_roll_axis0, axis=0)
     hd_cvdm = np.roll(hd_cvdm, hd_roll_axis1, axis=1)
+    if hd_cvdm_100it is not None:
+        hd_cvdm_100it = np.roll(hd_cvdm_100it, hd_roll_axis0, axis=0)
+        hd_cvdm_100it = np.roll(hd_cvdm_100it, hd_roll_axis1, axis=1)
+        if hd_100it_coords.size:
+            hd_100it_coords = _roll_coords(hd_100it_coords, hd_cvdm_100it.shape, hd_roll_axis0, hd_roll_axis1)
 
     ls_thunder_vmax = float(fig_cfg.get("ls_thunder_vmax", 40.0))
     ls_thunder_multi_vmax = float(fig_cfg.get("ls_thunder_multi_vmax", 30.0))
@@ -693,6 +851,37 @@ def run_figure_4cd(config: Dict[str, Any]) -> None:
     out_crop = fig_cfg.get("output_crop_name", "figure-4d.png")
     plt.savefig(os.path.join(output_dir, out_crop), dpi=300)
     plt.close(fig)
+
+    # Additional standalone outputs from 100-iteration stacks (if provided)
+    if ls_x_100it is not None:
+        ls_display = ls_x_100it.copy()
+        if sum_100it_display_threshold is not None:
+            ls_display[ls_display < sum_100it_display_threshold] = 0.0
+        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+        _imshow_percentile_gray(ax, ls_display)
+        if ls_100it_coords_raw.size and ls_100it_src_shape is not None:
+            ls_plot_coords = _rescale_coords(ls_100it_coords_raw, ls_100it_src_shape, ls_display.shape)
+            ax.scatter(ls_plot_coords[:, 1], ls_plot_coords[:, 0], c="red", s=overlay_dot_size, alpha=overlay_alpha)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        out_ls_100it = fig_cfg.get("output_ls_100it_scatter", "figure-100it-ls-scatter.png")
+        plt.savefig(os.path.join(output_dir, out_ls_100it), dpi=300)
+        plt.close(fig)
+
+    if hd_x_100it is not None:
+        hd_display = hd_x_100it.copy()
+        if sum_100it_display_threshold is not None:
+            hd_display[hd_display < sum_100it_display_threshold] = 0.0
+        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+        _imshow_percentile_gray(ax, hd_display)
+        if hd_100it_coords_raw.size and hd_100it_src_shape is not None:
+            hd_plot_coords = _rescale_coords(hd_100it_coords_raw, hd_100it_src_shape, hd_display.shape)
+            ax.scatter(hd_plot_coords[:, 1], hd_plot_coords[:, 0], c="red", s=overlay_dot_size, alpha=overlay_alpha)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        out_hd_100it = fig_cfg.get("output_hd_100it_scatter", "figure-100it-hd-scatter.png")
+        plt.savefig(os.path.join(output_dir, out_hd_100it), dpi=300)
+        plt.close(fig)
 
 
 def main() -> None:

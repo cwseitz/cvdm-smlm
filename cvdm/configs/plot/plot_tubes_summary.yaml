@@ -1,10 +1,11 @@
 paths:
-  hd_dir: "/Users/cwseitz/Library/CloudStorage/OneDrive-purdue.edu/Research/CVDM/Data/exp_CVDM/data/cvdm_sz64_n500_high_d"
-  ls_dir: "/Users/cwseitz/Library/CloudStorage/OneDrive-purdue.edu/Research/CVDM/Data/exp_CVDM/data/cvdm_sz64_n15k_long_sum5"
-  hd_results_dir: "/Users/cwseitz/Library/CloudStorage/OneDrive-purdue.edu/Research/CVDM/Data/exp_CVDM/results/cvdm_sz64_n500_high_d"
-  ls_results_dir: "/Users/cwseitz/Library/CloudStorage/OneDrive-purdue.edu/Research/CVDM/Data/exp_CVDM/results/cvdm_sz64_n15k_long_sum5"
-  output_dir: "/Users/cwseitz/Desktop/probes/figure4_tubes"
-
+  hd_dir: "/mnt/seitzcx/exps/exp_CVDM/data/cvdm_sz64_n500_high_d"
+  ls_dir: "/mnt/seitzcx/exps/exp_CVDM/data/cvdm_sz64_n15k_long_sum5"
+  hd_100it_dir: "/mnt/seitzcx/exps/exp_CVDM/results/csbt/cvdm_sz64_n500_high_d-100it"
+  ls_100it_dir: "/mnt/seitzcx/exps/exp_CVDM/results/csbt/cvdm_sz64_n15k_long_sum5-100it"
+  hd_results_dir: "/mnt/seitzcx/exps/exp_CVDM/results/cvdm_sz64_n500_high_d"
+  ls_results_dir: "/mnt/seitzcx/exps/exp_CVDM/results/cvdm_sz64_n15k_long_sum5"
+  output_dir: "/mnt/seitzcx/exps/exp_CVDM/results/csbt/figure4_tubes"
 figure_4b:
   hd_idx: 0
   ls_idx: 0
@@ -22,6 +23,9 @@ figure_4b:
   output_name: "figure-4b.png"
 
 figure_4cd:
+  overlay_dot_size: 0.1
+  overlay_alpha: 0.1
+  sum_100it_display_threshold: 0.2  # set numeric value to zero all pixels below threshold in 100it standalone images
   detection:
     log_threshold: 0.2
     median_filter_radius_px: 1  # set to 1 to median-filter before LoG detection
@@ -30,7 +34,7 @@ figure_4cd:
     kde_sigma: 1.0
     max_spots_per_frame: 0
     movie_stride: 1
-    regenerate_cvdm_render: true
+    regenerate_cvdm_render: false
     napari_preview: false
     napari_preview_only: false
     napari_preview_dataset: "both"  # one of: hd, ls, both
@@ -43,6 +47,8 @@ figure_4cd:
   output_panel_hd: "figure-4c-2.png"
   output_line_name: "figure-4c.png"
   output_crop_name: "figure-4d.png"
+  output_ls_100it_scatter: "figure-100it-ls-scatter.png"
+  output_hd_100it_scatter: "figure-100it-hd-scatter.png"
   pixel_size_nm: 25.0
   ls_profile_row: 120
   ls_profile_start: 50
