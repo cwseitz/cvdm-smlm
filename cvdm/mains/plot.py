@@ -4,6 +4,7 @@ import os
 import re
 import sys
 import tempfile
+import traceback
 from typing import Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -1128,12 +1129,17 @@ def _infer_probe_cache_layout(output_dir: str, cache_dir: str) -> Tuple[List[int
             if match:
                 sample_indices.append(int(match.group(1)))
         if sample_indices:
-            per_density_counts.append(max(sample_indices) + 1)
+            sample_set = set(sample_indices)
+            prefix_count = 0
+            while prefix_count in sample_set:
+                prefix_count += 1
+            per_density_counts.append(prefix_count)
 
     if not per_density_counts:
         raise FileNotFoundError(f"No sample_*.npz cache files found under: {cache_root}")
 
-    # Use the minimum complete count across densities so plotting never asks for missing samples.
+    # Use the minimum contiguous complete count across densities so plotting never asks for
+    # missing cache samples (e.g., gaps like sample_142 then sample_144).
     n_images = int(min(per_density_counts))
     return densities, n_images
 
@@ -1271,4 +1277,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException as exc:
+        if isinstance(exc, KeyboardInterrupt):
+            raise
+        print(f"[plot_main] fatal error: {exc}", file=sys.stderr)
+        traceback.print_exc()
+        raise

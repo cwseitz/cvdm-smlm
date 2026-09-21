@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from PIL import Image, ImageDraw
 import yaml
 from skimage.filters import median
@@ -142,6 +143,357 @@ def _rescale_coords(coords: np.ndarray, src_shape: Tuple[int, int], dst_shape: T
     out[:, 0] *= scale_x
     out[:, 1] *= scale_y
     return out
+
+
+def _load_cvdm_localizations_nm(
+    csv_path: str,
+    lr_pixel_size_nm: float,
+    upsample_factor: int,
+    frame_column: Optional[str] = None,
+) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+    df = pd.read_csv(csv_path)
+    if "x" not in df.columns or "y" not in df.columns:
+        raise ValueError(f"Expected columns 'x' and 'y' in CVDM csv: {csv_path}")
+    xy = df[["x", "y"]].to_numpy(dtype=np.float32)
+    nm_per_px = float(lr_pixel_size_nm) / float(max(1, upsample_factor))
+    points_nm = xy * nm_per_px
+
+    frames: Optional[np.ndarray] = None
+    if frame_column and frame_column in df.columns:
+        frames = df[frame_column].to_numpy(dtype=np.int64)
+    return points_nm, frames
+
+
+def _load_thunderstorm_localizations_nm(
+    csv_path: str,
+    frame_column: Optional[str] = None,
+) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+    df = pd.read_csv(csv_path)
+    x_col = "x [nm]" if "x [nm]" in df.columns else "x"
+    y_col = "y [nm]" if "y [nm]" in df.columns else "y"
+    if x_col not in df.columns or y_col not in df.columns:
+        raise ValueError(f"Expected Thunderstorm columns 'x [nm]'/'y [nm]' or 'x'/'y' in: {csv_path}")
+    points_nm = df[[x_col, y_col]].to_numpy(dtype=np.float32)
+
+    frames: Optional[np.ndarray] = None
+    if frame_column and frame_column in df.columns:
+        frames = df[frame_column].to_numpy(dtype=np.int64)
+    return points_nm, frames
+
+
+def _split_localizations(
+    points_nm: np.ndarray,
+    split_mode: str = "random",
+    seed: int = 0,
+    frames: Optional[np.ndarray] = None,
+) -> Tuple[np.ndarray, np.ndarray]:
+    if points_nm.size == 0:
+        return points_nm.copy(), points_nm.copy()
+
+    split_mode = str(split_mode).lower()
+    n_points = int(points_nm.shape[0])
+
+    if split_mode == "odd_even" and frames is not None and len(frames) == n_points:
+        mask_even = (frames % 2) == 0
+        a = points_nm[mask_even]
+        b = points_nm[~mask_even]
+        if a.shape[0] > 0 and b.shape[0] > 0:
+            return a, b
+
+    rng = np.random.default_rng(seed)
+    perm = rng.permutation(n_points)
+    mid = n_points // 2
+    a_idx = perm[:mid]
+    b_idx = perm[mid:]
+    if a_idx.size == 0 or b_idx.size == 0:
+        return points_nm.copy(), points_nm.copy()
+    return points_nm[a_idx], points_nm[b_idx]
+
+
+def _subsample_localizations(
+    points_nm: np.ndarray,
+    frames: Optional[np.ndarray],
+    n_target: int,
+    seed: int,
+) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+    n_total = int(points_nm.shape[0])
+    if n_target <= 0 or n_total <= n_target:
+        return points_nm, frames
+    rng = np.random.default_rng(seed)
+    idx = rng.choice(n_total, size=n_target, replace=False)
+    sampled_points = points_nm[idx]
+    sampled_frames = frames[idx] if frames is not None and len(frames) == n_total else frames
+    return sampled_points, sampled_frames
+
+
+def _frc_crossing(freqs: np.ndarray, frc_vals: np.ndarray, threshold: float) -> Tuple[float, float]:
+    crossing_freq = np.nan
+    for idx in range(1, len(freqs)):
+        y0 = float(frc_vals[idx - 1])
+        y1 = float(frc_vals[idx])
+        if (y0 >= threshold and y1 < threshold) or (y0 <= threshold and y1 > threshold):
+            x0 = float(freqs[idx - 1])
+            x1 = float(freqs[idx])
+            if x1 != x0:
+                t = (threshold - y0) / (y1 - y0)
+                crossing_freq = x0 + t * (x1 - x0)
+            else:
+                crossing_freq = x0
+            break
+    resolution_nm = float(1.0 / crossing_freq) if np.isfinite(crossing_freq) and crossing_freq > 0 else float("nan")
+    return crossing_freq, resolution_nm
+
+
+def _rasterize_points_nm(points_nm: np.ndarray, image_size_nm: float, bin_size_nm: float) -> np.ndarray:
+    n_bins = int(np.ceil(float(image_size_nm) / float(bin_size_nm)))
+    n_bins = max(n_bins, 8)
+    edges = np.linspace(0.0, image_size_nm, n_bins + 1, dtype=np.float32)
+    if points_nm.size == 0:
+        return np.zeros((n_bins, n_bins), dtype=np.float32)
+    x = points_nm[:, 0]
+    y = points_nm[:, 1]
+    valid = (x >= 0.0) & (x <= image_size_nm) & (y >= 0.0) & (y <= image_size_nm)
+    x = x[valid]
+    y = y[valid]
+    hist, _, _ = np.histogram2d(x, y, bins=[edges, edges])
+    return hist.astype(np.float32)
+
+
+def _fourier_ring_correlation(image_a: np.ndarray, image_b: np.ndarray, bin_size_nm: float) -> Tuple[np.ndarray, np.ndarray]:
+    if image_a.shape != image_b.shape:
+        raise ValueError(f"FRC images must have identical shape, got {image_a.shape} vs {image_b.shape}")
+
+    fa = np.fft.fftshift(np.fft.fft2(image_a))
+    fb = np.fft.fftshift(np.fft.fft2(image_b))
+
+    h, w = image_a.shape
+    yy, xx = np.indices((h, w))
+    cy, cx = h // 2, w // 2
+    rr = np.sqrt((yy - cy) ** 2 + (xx - cx) ** 2)
+    rr_int = rr.astype(np.int32)
+
+    max_r = int(min(h, w) // 2)
+    freqs = []
+    frc_vals = []
+
+    for radius in range(1, max_r):
+        mask = rr_int == radius
+        if not np.any(mask):
+            continue
+        a_ring = fa[mask]
+        b_ring = fb[mask]
+        num = np.sum(a_ring * np.conj(b_ring))
+        den = np.sqrt(np.sum(np.abs(a_ring) ** 2) * np.sum(np.abs(b_ring) ** 2))
+        if den == 0:
+            continue
+        frc = float(np.real(num / den))
+        freq = float(radius) / (float(h) * float(bin_size_nm))
+        freqs.append(freq)
+        frc_vals.append(frc)
+
+    return np.array(freqs, dtype=np.float32), np.array(frc_vals, dtype=np.float32)
+
+
+def run_figure_4frc(config: Dict[str, Any]) -> None:
+    fig_cfg = config.get("figure_4frc", None)
+    if not fig_cfg:
+        return
+
+    paths_cfg = config["paths"]
+    output_dir = paths_cfg["output_dir"]
+    os.makedirs(output_dir, exist_ok=True)
+
+    thunder_spots_csv = fig_cfg.get("thunder_spots_csv", None)
+    if thunder_spots_csv is None:
+        raise KeyError("figure_4frc requires 'thunder_spots_csv'")
+
+    cvdm_results_dir = fig_cfg.get(
+        "cvdm_results_dir",
+        paths_cfg.get("hd_results_dir", paths_cfg.get("high_density_results_dir", None)),
+    )
+    if cvdm_results_dir is None:
+        raise KeyError("figure_4frc requires 'cvdm_results_dir' or paths.hd_results_dir")
+
+    lr_pixel_size_nm = float(fig_cfg.get("pixel_size_nm", 80.0))
+    upsample_factor = int(fig_cfg.get("upsample_factor", 4))
+    image_size_lr_px = int(fig_cfg.get("image_size_lr_px", 64))
+    image_size_nm = float(image_size_lr_px) * lr_pixel_size_nm
+    bin_size_nm = float(fig_cfg.get("frc_bin_size_nm", lr_pixel_size_nm / max(1, upsample_factor)))
+    split_mode = str(fig_cfg.get("split_mode", "random")).lower()
+    split_seed = int(fig_cfg.get("split_seed", 0))
+    thunder_frame_column = fig_cfg.get("thunder_frame_column", None)
+
+    detect_cfg = fig_cfg.get("detection", config.get("figure_4cd", {}).get("detection", {}))
+    det_threshold = float(detect_cfg.get("log_threshold", 0.1))
+    det_min_sigma = float(detect_cfg.get("min_sigma", 0.75))
+    det_max_sigma = float(detect_cfg.get("max_sigma", 1.5))
+    det_max_spots_per_frame = int(detect_cfg.get("max_spots_per_frame", 0))
+    det_median_filter_radius_px = int(detect_cfg.get("median_filter_radius_px", 0))
+    det_fit_enabled = bool(detect_cfg.get("fit_enabled", True))
+
+    cvdm_frames_stack = _load_z_frames(cvdm_results_dir)
+    cvdm_px, cvdm_frames = _aggregate_detection_coords_with_frames(
+        frames=cvdm_frames_stack,
+        threshold=det_threshold,
+        min_sigma=det_min_sigma,
+        max_sigma=det_max_sigma,
+        max_spots_per_frame=det_max_spots_per_frame,
+        median_filter_radius_px=det_median_filter_radius_px,
+        fit_enabled=det_fit_enabled,
+    )
+    cvdm_nm_per_px = float(lr_pixel_size_nm) / float(max(1, upsample_factor))
+    cvdm_nm = cvdm_px * cvdm_nm_per_px
+
+    thunder_nm, thunder_frames = _load_thunderstorm_localizations_nm(
+        thunder_spots_csv,
+        frame_column=thunder_frame_column,
+    )
+
+    print(f"[figure_4frc] CVDM localizations total: {int(cvdm_nm.shape[0])}")
+    print(f"[figure_4frc] ThunderSTORM localizations total: {int(thunder_nm.shape[0])}")
+
+    count_match_total = fig_cfg.get("count_match_total_localizations", None)
+    if count_match_total is not None:
+        count_match_total = int(count_match_total)
+        if count_match_total > 0:
+            n_match = min(count_match_total, int(cvdm_nm.shape[0]), int(thunder_nm.shape[0]))
+            cvdm_nm, cvdm_frames = _subsample_localizations(cvdm_nm, cvdm_frames, n_match, split_seed + 101)
+            thunder_nm, thunder_frames = _subsample_localizations(thunder_nm, thunder_frames, n_match, split_seed + 202)
+            print(
+                "[figure_4frc] Count-matched localizations: "
+                f"target={count_match_total}, used_per_method={n_match}"
+            )
+            print(
+                "[figure_4frc] After count-match totals: "
+                f"CVDM={int(cvdm_nm.shape[0])}, ThunderSTORM={int(thunder_nm.shape[0])}"
+            )
+
+    cvdm_a, cvdm_b = _split_localizations(
+        cvdm_nm,
+        split_mode=split_mode,
+        seed=split_seed,
+        frames=cvdm_frames,
+    )
+    thunder_a, thunder_b = _split_localizations(
+        thunder_nm,
+        split_mode=split_mode,
+        seed=split_seed + 1,
+        frames=thunder_frames,
+    )
+
+    img_cvdm_a = _rasterize_points_nm(cvdm_a, image_size_nm=image_size_nm, bin_size_nm=bin_size_nm)
+    img_cvdm_b = _rasterize_points_nm(cvdm_b, image_size_nm=image_size_nm, bin_size_nm=bin_size_nm)
+    img_thunder_a = _rasterize_points_nm(thunder_a, image_size_nm=image_size_nm, bin_size_nm=bin_size_nm)
+    img_thunder_b = _rasterize_points_nm(thunder_b, image_size_nm=image_size_nm, bin_size_nm=bin_size_nm)
+
+    out_cvdm_a_tif = fig_cfg.get("output_frc_cvdm_split_a_tif", "figure-4e-frc-cvdm-split-a.tif")
+    out_cvdm_b_tif = fig_cfg.get("output_frc_cvdm_split_b_tif", "figure-4e-frc-cvdm-split-b.tif")
+    out_thunder_a_tif = fig_cfg.get("output_frc_thunder_split_a_tif", "figure-4e-frc-thunderstorm-split-a.tif")
+    out_thunder_b_tif = fig_cfg.get("output_frc_thunder_split_b_tif", "figure-4e-frc-thunderstorm-split-b.tif")
+    tifffile.imwrite(os.path.join(output_dir, out_cvdm_a_tif), img_cvdm_a.astype(np.float32))
+    tifffile.imwrite(os.path.join(output_dir, out_cvdm_b_tif), img_cvdm_b.astype(np.float32))
+    tifffile.imwrite(os.path.join(output_dir, out_thunder_a_tif), img_thunder_a.astype(np.float32))
+    tifffile.imwrite(os.path.join(output_dir, out_thunder_b_tif), img_thunder_b.astype(np.float32))
+
+    vmax_all = float(
+        max(
+            np.max(img_cvdm_a) if img_cvdm_a.size else 0.0,
+            np.max(img_cvdm_b) if img_cvdm_b.size else 0.0,
+            np.max(img_thunder_a) if img_thunder_a.size else 0.0,
+            np.max(img_thunder_b) if img_thunder_b.size else 0.0,
+        )
+    )
+    if vmax_all <= 0.0:
+        vmax_all = 1.0
+
+    fig_inputs, ax_inputs = plt.subplots(2, 2, figsize=(6, 6))
+    ax_inputs[0, 0].imshow(img_cvdm_a, cmap="gray", vmin=0.0, vmax=vmax_all)
+    ax_inputs[0, 0].set_title("CVDM split A", fontsize=9)
+    ax_inputs[0, 1].imshow(img_cvdm_b, cmap="gray", vmin=0.0, vmax=vmax_all)
+    ax_inputs[0, 1].set_title("CVDM split B", fontsize=9)
+    ax_inputs[1, 0].imshow(img_thunder_a, cmap="gray", vmin=0.0, vmax=vmax_all)
+    ax_inputs[1, 0].set_title("ThunderSTORM split A", fontsize=9)
+    ax_inputs[1, 1].imshow(img_thunder_b, cmap="gray", vmin=0.0, vmax=vmax_all)
+    ax_inputs[1, 1].set_title("ThunderSTORM split B", fontsize=9)
+    for axi in ax_inputs.ravel():
+        axi.set_xticks([])
+        axi.set_yticks([])
+    fig_inputs.tight_layout()
+    out_inputs_plot = fig_cfg.get("output_frc_inputs_plot", "figure-4e-frc-inputs.png")
+    fig_inputs.savefig(os.path.join(output_dir, out_inputs_plot), dpi=300)
+    plt.close(fig_inputs)
+
+    freqs_cvdm, frc_cvdm = _fourier_ring_correlation(img_cvdm_a, img_cvdm_b, bin_size_nm=bin_size_nm)
+    freqs_thunder, frc_thunder = _fourier_ring_correlation(img_thunder_a, img_thunder_b, bin_size_nm=bin_size_nm)
+
+    threshold = float(fig_cfg.get("frc_threshold", 1.0 / 7.0))
+    crossing_freq_cvdm, resolution_nm_cvdm = _frc_crossing(freqs_cvdm, frc_cvdm, threshold)
+    crossing_freq_thunder, resolution_nm_thunder = _frc_crossing(freqs_thunder, frc_thunder, threshold)
+
+    fig, ax = plt.subplots(1, 1, figsize=(5, 4))
+    ax.plot(freqs_cvdm, frc_cvdm, color="red", linewidth=1.5, label="CVDM")
+    ax.plot(freqs_thunder, frc_thunder, color="blue", linewidth=1.5, label="ThunderSTORM")
+    ax.axhline(threshold, color="black", linestyle="--", linewidth=1.0, label=f"threshold={threshold:.3f}")
+    ax.set_xlabel(r"Spatial frequency (nm$^{-1}$)")
+    ax.set_ylabel("FRC")
+    ax.set_title("FRC")
+    ax.set_ylim(-0.05, 1.05)
+    ax.grid(alpha=0.3)
+    ax.legend(frameon=False, fontsize=8)
+    fig.tight_layout()
+
+    out_plot = fig_cfg.get("output_frc_plot", "figure-4e-frc.png")
+    fig.savefig(os.path.join(output_dir, out_plot), dpi=300)
+    plt.close(fig)
+
+    freq_union = np.unique(np.concatenate([freqs_cvdm, freqs_thunder])).astype(np.float32)
+    frc_cvdm_interp = np.interp(freq_union, freqs_cvdm, frc_cvdm, left=np.nan, right=np.nan)
+    frc_thunder_interp = np.interp(freq_union, freqs_thunder, frc_thunder, left=np.nan, right=np.nan)
+    df_out = pd.DataFrame(
+        {
+            "spatial_frequency_nm_inv": freq_union,
+            "frc_cvdm": frc_cvdm_interp,
+            "frc_thunderstorm": frc_thunder_interp,
+        }
+    )
+    out_csv = fig_cfg.get("output_frc_csv", "figure-4e-frc.csv")
+    df_out.to_csv(os.path.join(output_dir, out_csv), index=False)
+
+    summary = {
+        "threshold": threshold,
+        "split_mode": split_mode,
+        "split_seed": split_seed,
+        "count_match_total_localizations": count_match_total,
+        "cvdm_results_dir": cvdm_results_dir,
+        "frc_input_images": {
+            "cvdm_split_a_tif": out_cvdm_a_tif,
+            "cvdm_split_b_tif": out_cvdm_b_tif,
+            "thunderstorm_split_a_tif": out_thunder_a_tif,
+            "thunderstorm_split_b_tif": out_thunder_b_tif,
+            "panel_png": out_inputs_plot,
+        },
+        "cvdm": {
+            "n_localizations": int(cvdm_nm.shape[0]),
+            "n_split_a": int(cvdm_a.shape[0]),
+            "n_split_b": int(cvdm_b.shape[0]),
+            "crossing_frequency_nm_inv": None if not np.isfinite(crossing_freq_cvdm) else float(crossing_freq_cvdm),
+            "resolution_nm": None if not np.isfinite(resolution_nm_cvdm) else float(resolution_nm_cvdm),
+        },
+        "thunderstorm": {
+            "n_localizations": int(thunder_nm.shape[0]),
+            "n_split_a": int(thunder_a.shape[0]),
+            "n_split_b": int(thunder_b.shape[0]),
+            "crossing_frequency_nm_inv": None if not np.isfinite(crossing_freq_thunder) else float(crossing_freq_thunder),
+            "resolution_nm": None if not np.isfinite(resolution_nm_thunder) else float(resolution_nm_thunder),
+        },
+        "pixel_size_nm": lr_pixel_size_nm,
+        "upsample_factor": upsample_factor,
+        "cvdm_nm_per_px": cvdm_nm_per_px,
+        "frc_bin_size_nm": bin_size_nm,
+    }
+    out_summary = fig_cfg.get("output_frc_summary", "figure-4e-frc-summary.yaml")
+    with open(os.path.join(output_dir, out_summary), "w", encoding="utf-8") as handle:
+        yaml.safe_dump(summary, handle, sort_keys=False)
 
 
 def _frame_to_rgb(frame: np.ndarray) -> np.ndarray:
@@ -298,6 +650,49 @@ def _aggregate_detection_coords(
     if not all_coords:
         return np.empty((0, 2), dtype=np.float32)
     return np.concatenate(all_coords, axis=0).astype(np.float32)
+
+
+def _aggregate_detection_coords_with_frames(
+    frames: np.ndarray,
+    threshold: float,
+    min_sigma: float,
+    max_sigma: float,
+    max_spots_per_frame: int,
+    median_filter_radius_px: int,
+    fit_enabled: bool,
+) -> Tuple[np.ndarray, np.ndarray]:
+    all_coords: List[np.ndarray] = []
+    all_frame_ids: List[np.ndarray] = []
+    for frame_idx, frame in enumerate(frames):
+        frame_for_detection = frame
+        if median_filter_radius_px > 0:
+            frame_for_detection = median(frame_for_detection, footprint=disk(median_filter_radius_px))
+
+        det = PipelineMLE2D(frame_for_detection[None, ...]).localize(
+            threshold=threshold,
+            min_sigma=min_sigma,
+            max_sigma=max_sigma,
+            fit_enabled=fit_enabled,
+            show_tqdm=False,
+        )
+        if det.empty:
+            continue
+        if max_spots_per_frame > 0 and len(det) > max_spots_per_frame and "peak" in det.columns:
+            det = det.sort_values("peak", ascending=False).head(max_spots_per_frame)
+
+        if fit_enabled and "x_mle" in det.columns and "y_mle" in det.columns:
+            coords = det[["x_mle", "y_mle"]].to_numpy(dtype=np.float32)
+        else:
+            coords = det[["x", "y"]].to_numpy(dtype=np.float32)
+        if coords.size == 0:
+            continue
+
+        all_coords.append(coords)
+        all_frame_ids.append(np.full((coords.shape[0],), frame_idx, dtype=np.int64))
+
+    if not all_coords:
+        return np.empty((0, 2), dtype=np.float32), np.empty((0,), dtype=np.int64)
+    return np.concatenate(all_coords, axis=0).astype(np.float32), np.concatenate(all_frame_ids, axis=0)
 
 
 def _roll_coords(coords: np.ndarray, shape: Tuple[int, int], axis0_shift: int, axis1_shift: int) -> np.ndarray:
@@ -896,6 +1291,7 @@ def main() -> None:
     _validate_required_renders(config)
     run_figure_4b(config)
     run_figure_4cd(config)
+    run_figure_4frc(config)
 
 
 if __name__ == "__main__":

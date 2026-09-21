@@ -1,15 +1,15 @@
-output_dir: "/mnt/seitzcx/exps/exp_CVDM/probes/csbt/uniform-corr-n100-sigma1"
+output_dir: "/mnt/seitzcx/exps/exp_CVDM/probes/csbt2/cvdm_uniform-nx-sigma1-multi"
 
 model:
   noise_model_type: "unet"
   alpha: 0.001
-  load_weights: "/mnt/seitzcx/exps/exp_CVDM/models/csbt/cvdm_uniform-n100-sigma1/weights/model_12000_106a78ec-ce0d-4223-bdbe-e3f50f282e38.h5"
+  #load_weights: "/mnt/seitzcx/exps/exp_CVDM/models/csbt2/cvdm_uniform-n100-sigma1/weights/model_12000_963d1078-9ccc-4c47-b44a-c073b69ce5d4.h5"
   load_mu_weights: null
   # Optional per-density weight overrides (keys must match `probe.densities` as strings)
-  # load_weights_map:
-  #   "100": "/mnt/seitzcx/exps/exp_CVDM/models/cvdm_sz64_n1000_N100-101_sim_quartz/model_12000_96fdee46-c629-4c45-aa32-b0c0a7aa0117.h5"
-  #   "200": "/mnt/seitzcx/exps/exp_CVDM/models/cvdm_sz64_n1000_N200-201_sim_quartz/model_12000_186a018f-db1a-4da8-94cd-afef3bf968b6.h5"
-  #   "500": "/mnt/seitzcx/exps/exp_CVDM/models/cvdm_sz64_n1000_N500-501_sim_quartz/model_12000_216156f6-b329-424e-927c-ed0f82c88b1b.h5"
+  load_weights_map:
+    "100": "/mnt/seitzcx/exps/exp_CVDM/models/csbt2/cvdm_uniform-n100-sigma1/weights/model_12000_963d1078-9ccc-4c47-b44a-c073b69ce5d4.h5"
+    "200": "/mnt/seitzcx/exps/exp_CVDM/models/csbt2/cvdm_uniform-n200-sigma1/weights/model_12000_e496ca0a-81e5-4bc9-90c1-52c902b85986.h5"
+    "500": "/mnt/seitzcx/exps/exp_CVDM/models/csbt2/cvdm_uniform-n500-sigma1/weights/model_12000_ddf7cf0f-0611-4b52-8f8f-8c024f444509.h5"
   # load_mu_weights_map:
   #   "100": "/path/to/mu_weights_density_100.h5"
   snr_expansion_n: 1
@@ -29,7 +29,7 @@ sim:
   size: 64
   sigma: 1.0
   texp: 1.0
-  N0_min: 500.0
+  N0_min: 100.0
   N0_max: 1000.0
   eta: 1.0
   gain: 1.0
@@ -48,9 +48,9 @@ sim:
   input_upsample: 4
 
 probe:
-  densities: [100]
-  n_images: 1
-  n_iters: 100
+  densities: [100,200,500]
+  n_images: 100
+  n_iters: 10
   show_tqdm: true
   save_cache: true
   subtract_offset: false

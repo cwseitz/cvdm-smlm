@@ -1,6 +1,8 @@
 import argparse
 import math
 import os
+import time
+import traceback
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -9,6 +11,7 @@ import tifffile
 import yaml
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from matplotlib.ticker import MaxNLocator, MultipleLocator, StrMethodFormatter
 from matplotlib.gridspec import GridSpecFromSubplotSpec
 import tensorflow as tf
 from tqdm import tqdm
@@ -128,6 +131,28 @@ def _imshow_scaled(
     ax.imshow(image, cmap=cmap, vmin=vmin, vmax=vmax, **kwargs)
 
 
+def _compute_ms_ssim_psnr(reference: np.ndarray, estimate: np.ndarray) -> Tuple[float, float]:
+    ref = np.asarray(reference, dtype=np.float32)
+    est = np.asarray(estimate, dtype=np.float32)
+    val_min = float(min(np.min(ref), np.min(est)))
+    val_max = float(max(np.max(ref), np.max(est)))
+    dyn_range = val_max - val_min
+    if dyn_range <= 0:
+        dyn_range = 1.0
+
+    ref_tf = tf.convert_to_tensor(ref[None, ..., None], dtype=tf.float32)
+    est_tf = tf.convert_to_tensor(est[None, ..., None], dtype=tf.float32)
+    psnr_val = float(tf.image.psnr(ref_tf, est_tf, max_val=dyn_range).numpy()[0])
+
+    try:
+        ms_ssim_val = float(tf.image.ssim_multiscale(ref_tf, est_tf, max_val=dyn_range).numpy()[0])
+    except Exception:
+        ms_ssim_val = float(
+            tf.image.ssim(ref_tf, est_tf, max_val=dyn_range, filter_size=7).numpy()[0]
+        )
+    return ms_ssim_val, psnr_val
+
+
 def _normalize_weight_map(weight_map) -> Dict[str, str]:
     if not isinstance(weight_map, dict):
         return {}
@@ -142,26 +167,42 @@ def _detect_spots(
     detector = PipelineMLE2D(stack)
     cam_params = detection_cfg.get("cam_params", None)
     fit_enabled = bool(detection_cfg.get("fit_enabled", True))
-    return detector.localize(
-        plot_spots=False,
-        plot_fit=False,
-        tmax=None,
-        threshold=float(detection_cfg.get("log_threshold", 0.1)),
-        min_sigma=float(detection_cfg.get("min_sigma", 0.75)),
-        max_sigma=float(detection_cfg.get("max_sigma", 1.5)),
-        n_jobs=int(detection_cfg.get("n_jobs", 1)),
-        max_fit_distance=detection_cfg.get("max_fit_distance", None) if fit_enabled else None,
-        cam_params=cam_params,
-        sigma_psf=float(detection_cfg.get("sigma_psf", 1.0)),
-        fit_enabled=fit_enabled,
-        max_iters=int(detection_cfg.get("max_iters", 100)),
-        patchw=int(detection_cfg.get("patchw", 3)),
-        fit_model=detection_cfg.get("fit_model", "aniso"),
-        sigma_x_init=detection_cfg.get("sigma_x_init", None),
-        sigma_y_init=detection_cfg.get("sigma_y_init", None),
-        theta_init=detection_cfg.get("theta_init", None),
-        show_tqdm=False,
-    )
+    try:
+        return detector.localize(
+            plot_spots=False,
+            plot_fit=False,
+            tmax=None,
+            threshold=float(detection_cfg.get("log_threshold", 0.1)),
+            min_sigma=float(detection_cfg.get("min_sigma", 0.75)),
+            max_sigma=float(detection_cfg.get("max_sigma", 1.5)),
+            n_jobs=int(detection_cfg.get("n_jobs", 1)),
+            max_fit_distance=detection_cfg.get("max_fit_distance", None) if fit_enabled else None,
+            cam_params=cam_params,
+            sigma_psf=float(detection_cfg.get("sigma_psf", 1.0)),
+            fit_enabled=fit_enabled,
+            max_iters=int(detection_cfg.get("max_iters", 100)),
+            patchw=int(detection_cfg.get("patchw", 3)),
+            fit_model=detection_cfg.get("fit_model", "aniso"),
+            sigma_x_init=detection_cfg.get("sigma_x_init", None),
+            sigma_y_init=detection_cfg.get("sigma_y_init", None),
+            theta_init=detection_cfg.get("theta_init", None),
+            show_tqdm=False,
+        )
+    except BaseException as exc:
+        if isinstance(exc, KeyboardInterrupt):
+            raise
+        fail_count = int(getattr(_detect_spots, "_fail_count", 0)) + 1
+        setattr(_detect_spots, "_fail_count", fail_count)
+        fail_limit = int(detection_cfg.get("detect_fail_log_limit", 5))
+        if fail_count <= fail_limit:
+            print(f"[probe_detect] detection failed and was skipped: {exc}")
+            print(traceback.format_exc())
+        elif fail_count == fail_limit + 1:
+            print(
+                "[probe_detect] additional detection failures are being suppressed "
+                f"(limit={fail_limit})"
+            )
+        return pd.DataFrame(columns=["x", "y"])
 
 
 def _pick_inset_coords(
@@ -401,6 +442,9 @@ def main() -> None:
     sample_by_density: Dict[str, Dict[str, np.ndarray]] = {}
     std_records = {str(d): {"x": [], "y": []} for d in densities}
     uncertainty_corr_records = {str(d): [] for d in densities}
+    missing_cache_samples = {str(d): 0 for d in densities}
+    invalid_cache_samples = {str(d): 0 for d in densities}
+    failed_processing_samples = {str(d): 0 for d in densities}
     pixel_size_nm = float(metrics_cfg.get("pixel_size_nm", 1.0))
 
     density_iter = tqdm(densities, desc="Densities") if show_tqdm else densities
@@ -437,14 +481,29 @@ def main() -> None:
             cache_path = os.path.join(density_dir, f"sample_{img_idx}.npz")
             if use_probe_cache:
                 if not os.path.exists(cache_path):
-                    raise FileNotFoundError(f"Missing cache file: {cache_path}")
-                cached = np.load(cache_path)
-                pred_mean = cached["pred_mean"]
-                pred_std = cached["pred_std"]
-                preds = cached["preds"]
-                theta = cached["theta"]
-                x = cached["x"]
-                lr_raw = cached["lr_raw"] if "lr_raw" in cached else None
+                    missing_cache_samples[str(density)] += 1
+                    if missing_cache_samples[str(density)] <= 5:
+                        print(f"[probe_plot_cache] missing sample skipped: {cache_path}")
+                    continue
+                try:
+                    with np.load(cache_path) as cached:
+                        required_keys = ["pred_mean", "pred_std", "preds", "theta", "x"]
+                        missing_keys = [key for key in required_keys if key not in cached]
+                        if missing_keys:
+                            raise KeyError(
+                                f"missing keys {missing_keys} in cache file {cache_path}"
+                            )
+                        pred_mean = cached["pred_mean"]
+                        pred_std = cached["pred_std"]
+                        preds = cached["preds"]
+                        theta = cached["theta"]
+                        x = cached["x"]
+                        lr_raw = cached["lr_raw"] if "lr_raw" in cached else None
+                except Exception as exc:
+                    invalid_cache_samples[str(density)] += 1
+                    if invalid_cache_samples[str(density)] <= 5:
+                        print(f"[probe_plot_cache] invalid sample skipped: {cache_path} ({exc})")
+                    continue
                 hr_true = _make_kde_label(theta, size, label_upsample, label_sigma, label_scale, label_centering)
             else:
                 nspots = int(density)
@@ -539,7 +598,10 @@ def main() -> None:
                 preds = []
                 out_shape = (1, size * label_upsample, size * label_upsample, 1)
                 iter_loop = tqdm(range(n_iters), desc="DDPM", leave=False) if show_tqdm else range(n_iters)
+                diffusion_t0 = time.perf_counter()
+                per_sample_times: List[float] = []
                 for _ in iter_loop:
+                    sample_t0 = time.perf_counter()
                     pred, _, _ = ddpm_obtain_sr_img(
                         x_in,
                         generation_timesteps,
@@ -548,8 +610,24 @@ def main() -> None:
                         mu_model,
                         out_shape,
                     )
+                    per_sample_times.append(time.perf_counter() - sample_t0)
                     pred = np.squeeze(pred)
                     preds.append(pred)
+                diffusion_total_s = time.perf_counter() - diffusion_t0
+                per_sample_mean_s = float(np.mean(per_sample_times)) if per_sample_times else float("nan")
+                per_step_mean_ms = (
+                    1000.0 * per_sample_mean_s / float(max(1, generation_timesteps))
+                    if np.isfinite(per_sample_mean_s)
+                    else float("nan")
+                )
+                print(
+                    "[probe_timing] "
+                    f"density={density} image_idx={img_idx} "
+                    f"timesteps={generation_timesteps} n_iters={n_iters} "
+                    f"diffusion_total_s={diffusion_total_s:.3f} "
+                    f"per_sample_200step_s={per_sample_mean_s:.3f} "
+                    f"per_step_ms={per_step_mean_ms:.3f}"
+                )
                 preds = np.array(preds)
                 pred_mean = np.mean(preds, axis=0)
                 pred_std = np.std(preds, axis=0)
@@ -565,28 +643,39 @@ def main() -> None:
                         lr_raw=lr_raw,
                     )
 
-            # detection
-            detect_frame = pred_mean if detect_on == "mean" else preds[0]
-            fit_enabled = bool(detection_cfg.get("fit_enabled", True))
-            spots = _detect_spots(detect_frame, detection_cfg)
+            try:
+                detect_frame = pred_mean if detect_on == "mean" else preds[0]
+                fit_enabled = bool(detection_cfg.get("fit_enabled", True))
+                spots = _detect_spots(detect_frame, detection_cfg)
 
-            if spots.empty:
-                pred_xy = np.zeros((0, 2))
-            elif fit_enabled and "x_mle" in spots.columns and "y_mle" in spots.columns:
-                pred_xy = np.vstack([spots["x_mle"].to_numpy(), spots["y_mle"].to_numpy()]).T
-            else:
-                pred_xy = np.vstack([spots["x"].to_numpy(), spots["y"].to_numpy()]).T
-            coordsgt = theta.copy()
-            coordsgt[0:2, :] *= label_upsample
-            tol_val = float(metrics_cfg.get("tol", 5.0))
-            all_x_err, all_y_err, all_label, all_n0, inter, union, fp, fn = errors2d(
-                coordsgt,
-                pred_xy,
-                tol=tol_val,
-            )
-            precision, recall = _compute_precision_recall(int(inter), int(fp), int(fn))
-            precision_list.append(precision)
-            recall_list.append(recall)
+                if spots.empty:
+                    pred_xy = np.zeros((0, 2))
+                elif fit_enabled and "x_mle" in spots.columns and "y_mle" in spots.columns:
+                    pred_xy = np.vstack([spots["x_mle"].to_numpy(), spots["y_mle"].to_numpy()]).T
+                else:
+                    pred_xy = np.vstack([spots["x"].to_numpy(), spots["y"].to_numpy()]).T
+                coordsgt = theta.copy()
+                coordsgt[0:2, :] *= label_upsample
+                tol_val = float(metrics_cfg.get("tol", 5.0))
+                all_x_err, all_y_err, all_label, all_n0, inter, union, fp, fn = errors2d(
+                    coordsgt,
+                    pred_xy,
+                    tol=tol_val,
+                )
+                precision, recall = _compute_precision_recall(int(inter), int(fp), int(fn))
+                precision_list.append(precision)
+                recall_list.append(recall)
+            except BaseException as exc:
+                if isinstance(exc, KeyboardInterrupt):
+                    raise
+                failed_processing_samples[str(density)] += 1
+                if failed_processing_samples[str(density)] <= 5:
+                    print(
+                        f"[probe_plot_cache] processing failed and was skipped: "
+                        f"density={density} image_idx={img_idx} error={exc}"
+                    )
+                    print(traceback.format_exc())
+                continue
 
             if img_idx == 0:
                 sample_lr = x
@@ -774,6 +863,17 @@ def main() -> None:
             _imshow_scaled(axes[row, 2], hr_pred, contrast_low, contrast_high)
             axes[row, 2].set_xticks([])
             axes[row, 2].set_yticks([])
+            ms_ssim_val, psnr_val = _compute_ms_ssim_psnr(hr_true, hr_pred)
+            axes[row, 2].text(
+                0.02,
+                0.03,
+                f"MS-SSIM: {ms_ssim_val:.3f}\nPSNR: {psnr_val:.2f} dB",
+                transform=axes[row, 2].transAxes,
+                color="white",
+                fontsize=9,
+                ha="left",
+                va="bottom",
+            )
             inset = axes[row, 2].inset_axes([0.65, 0.65, 0.4, 0.4])
             _imshow_scaled(
                 inset,
@@ -1259,7 +1359,7 @@ def main() -> None:
                     ax.axvline(mean_value, color="black", linestyle="--", label=rf"$\mu={mean_value:.2f}$")
                     if ax.get_subplotspec().is_first_row():
                         ax.set_title(rf"$\rho={densities[i]}$", fontsize=14)
-                    ax.set_xlabel(label + r"\ (nm)", fontsize=12)
+                    ax.set_xlabel(label + " (nm)", fontsize=12)
                     ax.set_xlim(x_min, x_max)
                     ax.legend(frameon=False, fontsize=10)
             axes[0, 0].set_ylabel(r"$\mathrm{Probability}$", fontsize=12)
@@ -1358,6 +1458,31 @@ def main() -> None:
         axes = axes[0]
         x_label = r"$\sigma_{\mathrm{CVDM}}$ per spot (nm)"
         y_label = r"$\bar{\epsilon}$ per spot (nm)"
+
+        axis_values = []
+        for density in densities:
+            records = uncertainty_corr_records.get(str(density), [])
+            if not records:
+                continue
+            std_vals = np.array([row["std_xy_nm"] for row in records], dtype=float)
+            err_vals = np.array([row["err_avg_xy_nm"] for row in records], dtype=float)
+            if std_vals.size:
+                axis_values.append(std_vals)
+            if err_vals.size:
+                axis_values.append(err_vals)
+        if axis_values:
+            all_vals = np.concatenate(axis_values)
+            all_vals = all_vals[np.isfinite(all_vals)]
+            if all_vals.size:
+                shared_min = float(np.floor(np.min(all_vals) / 5.0) * 5.0)
+                shared_max = float(np.ceil(np.max(all_vals) / 5.0) * 5.0)
+                if shared_max <= shared_min:
+                    shared_max = shared_min + 5.0
+            else:
+                shared_min, shared_max = 0.0, 5.0
+        else:
+            shared_min, shared_max = 0.0, 5.0
+
         for idx, density in enumerate(densities):
             ax = axes[idx]
             records = uncertainty_corr_records.get(str(density), [])
@@ -1367,9 +1492,23 @@ def main() -> None:
             std_vals = np.array([row["std_xy_nm"] for row in records], dtype=float)
             err_vals = np.array([row["err_avg_xy_nm"] for row in records], dtype=float)
             ax.scatter(std_vals, err_vals, s=12, alpha=0.7, c="black", edgecolors="none")
+            corr = density_summary[str(density)]["pearson_std_vs_err"]
+            corr_text = f"{corr:.3f}" if np.isfinite(corr) else "nan"
+            if std_vals.size > 1 and np.std(std_vals) > 0 and np.std(err_vals) > 0:
+                spearman = float(pd.Series(std_vals).rank(method="average").corr(pd.Series(err_vals).rank(method="average")))
+            else:
+                spearman = float("nan")
+            spearman_text = f"{spearman:.3f}" if np.isfinite(spearman) else "nan"
+            ax.set_title(rf"Pearson $r={corr_text}$, Spearman $\rho={spearman_text}$", fontsize=10)
+            ax.set_xlim(shared_min, shared_max)
+            ax.set_ylim(shared_min, shared_max)
+            ax.set_aspect("equal", adjustable="box")
+            ax.xaxis.set_major_locator(MultipleLocator(5.0))
+            ax.yaxis.set_major_locator(MultipleLocator(5.0))
+            ax.xaxis.set_major_formatter(StrMethodFormatter("{x:.0f}"))
+            ax.yaxis.set_major_formatter(StrMethodFormatter("{x:.0f}"))
             ax.set_xlabel(x_label)
-            if idx == 0:
-                ax.set_ylabel(y_label)
+            ax.set_ylabel(y_label)
             ax.grid(alpha=0.3)
 
         fig.tight_layout()
@@ -1476,6 +1615,24 @@ def main() -> None:
         ax2.grid()
         fig.tight_layout()
         _save_fig(fig, output_dir, "probe_2de.png")
+
+    if use_probe_cache:
+        for density in densities:
+            miss_count = int(missing_cache_samples.get(str(density), 0))
+            if miss_count > 0:
+                print(
+                    f"[probe_plot_cache] density={density} skipped_missing_samples={miss_count}"
+                )
+            invalid_count = int(invalid_cache_samples.get(str(density), 0))
+            if invalid_count > 0:
+                print(
+                    f"[probe_plot_cache] density={density} skipped_invalid_samples={invalid_count}"
+                )
+            failed_count = int(failed_processing_samples.get(str(density), 0))
+            if failed_count > 0:
+                print(
+                    f"[probe_plot_cache] density={density} skipped_processing_failures={failed_count}"
+                )
 
 
 if __name__ == "__main__":

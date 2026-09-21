@@ -28,7 +28,7 @@ eval:
   val_len: 10
   n_iters: 1
 
-output_subdir: "cvdm_uniform-n200-sigma1"
+output_subdir: "cvdm_uniform-n500-sigma1"
 sim_preview_count: 100
 sim_preview_path: null
 
@@ -43,8 +43,8 @@ data:
 sim:
   generator: "Uniform2D"
   size: null
-  nspots_min: 200
-  nspots_max: 201
+  nspots_min: 500
+  nspots_max: 501
   sigma: 1.0
   texp: 1.0
   N0_min: 100.0

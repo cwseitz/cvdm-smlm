@@ -2,7 +2,7 @@ mode: "probe"
 
 plot:
   # Figures are written under this directory.
-  probe_output_dir: "/mnt/seitzcx/exps/exp_CVDM/probes/csbt/uniform-corr-n100-sigma1"
+  probe_output_dir: "/mnt/seitzcx/exps/exp_CVDM/probes/csbt2/cvdm_uniform-nx-sigma1-multi"
 
   # Cache source can be relative to probe_output_dir (default) or absolute.
   cache_dir: "probe_cache"
@@ -29,7 +29,7 @@ plot:
 
   pixel_size_nm: 25.0
   tol: 5.0
-  error_bins: [500, 600, 700, 800, 900]
+  error_bins: [100,200,300,400,500,600,700,800,900,1000]
 
   log_threshold: 0.2
   min_sigma: 0.75

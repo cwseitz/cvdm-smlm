@@ -61,3 +61,32 @@ figure_4cd:
   hd_crop_row_stop: 212
   hd_crop_col_start: 73
   hd_crop_col_stop: 123
+
+figure_4frc:
+  cvdm_results_dir: "/mnt/seitzcx/exps/exp_CVDM/results/cvdm_sz64_n500_high_d"
+  thunder_spots_csv: "/mnt/seitzcx/exps/exp_CVDM/data/cvdm_sz64_n500_high_d/thunderstorm/spots.csv"
+  pixel_size_nm: 80.0
+  upsample_factor: 4
+  image_size_lr_px: 64
+  frc_bin_size_nm: 20.0
+  count_match_total_localizations: 20000  # sample this many per method before split-FRC
+  split_mode: "random"   # one of: random, odd_even
+  split_seed: 0
+  thunder_frame_column: "frame"  # set null if not available
+  # optional; defaults to figure_4cd.detection if omitted
+  # detection:
+  #   log_threshold: 0.2
+  #   min_sigma: 0.75
+  #   max_sigma: 1.5
+  #   max_spots_per_frame: 0
+  #   median_filter_radius_px: 1
+  #   fit_enabled: true
+  frc_threshold: 0.142857142857
+  output_frc_plot: "figure-4e-frc.png"
+  output_frc_csv: "figure-4e-frc.csv"
+  output_frc_summary: "figure-4e-frc-summary.yaml"
+  output_frc_inputs_plot: "figure-4e-frc-inputs.png"
+  output_frc_cvdm_split_a_tif: "figure-4e-frc-cvdm-split-a.tif"
+  output_frc_cvdm_split_b_tif: "figure-4e-frc-cvdm-split-b.tif"
+  output_frc_thunder_split_a_tif: "figure-4e-frc-thunderstorm-split-a.tif"
+  output_frc_thunder_split_b_tif: "figure-4e-frc-thunderstorm-split-b.tif"
