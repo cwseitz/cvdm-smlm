@@ -68,8 +68,8 @@ figure_4frc:
   pixel_size_nm: 80.0
   upsample_factor: 4
   image_size_lr_px: 64
-  frc_bin_size_nm: 20.0
-  count_match_total_localizations: 20000  # sample this many per method before split-FRC
+  frc_kde_sigma_px: 2.0
+  count_match_total_localizations: 1000000  # sample this many per method before split-FRC
   split_mode: "random"   # one of: random, odd_even
   split_seed: 0
   thunder_frame_column: "frame"  # set null if not available
@@ -81,7 +81,6 @@ figure_4frc:
   #   max_spots_per_frame: 0
   #   median_filter_radius_px: 1
   #   fit_enabled: true
-  frc_threshold: 0.142857142857
   output_frc_plot: "figure-4e-frc.png"
   output_frc_csv: "figure-4e-frc.csv"
   output_frc_summary: "figure-4e-frc-summary.yaml"

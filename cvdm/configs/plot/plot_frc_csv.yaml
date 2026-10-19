@@ -1,0 +1,9 @@
+cvdm_csv: "/projects/data_solutions/raiders/pathai/seitzcx/exps/exp_CVDM/results/csbt/figure4_tubes/FRC-CVDM.csv"
+thunder_csv: "/projects/data_solutions/raiders/pathai/seitzcx/exps/exp_CVDM/results/csbt/figure4_tubes/FRC-ThunderSTORM.csv"
+out_png: "/projects/data_solutions/raiders/pathai/seitzcx/exps/exp_CVDM/results/csbt/figure4_tubes/FRC-publication.png"
+out_pdf: "/projects/data_solutions/raiders/pathai/seitzcx/exps/exp_CVDM/results/csbt/figure4_tubes/FRC-publication.pdf"
+title: ""
+dpi: 300
+pixel_size_nm: 20.0
+use_smoothed: true
+show_threshold: true

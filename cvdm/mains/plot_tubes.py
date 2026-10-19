@@ -210,6 +210,29 @@ def _split_localizations(
     return points_nm[a_idx], points_nm[b_idx]
 
 
+def _equalize_split_counts(
+    split_a: np.ndarray,
+    split_b: np.ndarray,
+    seed: int,
+) -> Tuple[np.ndarray, np.ndarray]:
+    n_a = int(split_a.shape[0])
+    n_b = int(split_b.shape[0])
+    n_keep = min(n_a, n_b)
+    if n_keep <= 0:
+        return split_a[:0], split_b[:0]
+    if n_a == n_keep and n_b == n_keep:
+        return split_a, split_b
+
+    rng = np.random.default_rng(seed)
+    if n_a > n_keep:
+        idx_a = rng.choice(n_a, size=n_keep, replace=False)
+        split_a = split_a[idx_a]
+    if n_b > n_keep:
+        idx_b = rng.choice(n_b, size=n_keep, replace=False)
+        split_b = split_b[idx_b]
+    return split_a, split_b
+
+
 def _subsample_localizations(
     points_nm: np.ndarray,
     frames: Optional[np.ndarray],
@@ -257,6 +280,28 @@ def _rasterize_points_nm(points_nm: np.ndarray, image_size_nm: float, bin_size_n
     y = y[valid]
     hist, _, _ = np.histogram2d(x, y, bins=[edges, edges])
     return hist.astype(np.float32)
+
+
+def _kde_render_points_nm(
+    points_nm: np.ndarray,
+    image_size_px: int,
+    image_size_nm: float,
+    kde_sigma_px: float,
+    pixel_size_nm: float,
+) -> np.ndarray:
+    image_size_px = int(max(8, image_size_px))
+    if points_nm.size == 0:
+        return np.zeros((image_size_px, image_size_px), dtype=np.float32)
+
+    x_nm = points_nm[:, 0]
+    y_nm = points_nm[:, 1]
+    valid = (x_nm >= 0.0) & (x_nm < image_size_nm) & (y_nm >= 0.0) & (y_nm < image_size_nm)
+    if not np.any(valid):
+        return np.zeros((image_size_px, image_size_px), dtype=np.float32)
+
+    points_px = points_nm[valid] / float(pixel_size_nm)
+    kde = BasicKDE(points_px.astype(np.float32)).forward(image_size_px, upsample=1, sigma=float(kde_sigma_px))
+    return kde.astype(np.float32)
 
 
 def _fourier_ring_correlation(image_a: np.ndarray, image_b: np.ndarray, bin_size_nm: float) -> Tuple[np.ndarray, np.ndarray]:
@@ -318,12 +363,14 @@ def run_figure_4frc(config: Dict[str, Any]) -> None:
     upsample_factor = int(fig_cfg.get("upsample_factor", 4))
     image_size_lr_px = int(fig_cfg.get("image_size_lr_px", 64))
     image_size_nm = float(image_size_lr_px) * lr_pixel_size_nm
-    bin_size_nm = float(fig_cfg.get("frc_bin_size_nm", lr_pixel_size_nm / max(1, upsample_factor)))
+    pixel_size_frc_nm = float(lr_pixel_size_nm) / float(max(1, upsample_factor))
+    image_size_frc_px = int(image_size_lr_px * max(1, upsample_factor))
     split_mode = str(fig_cfg.get("split_mode", "random")).lower()
     split_seed = int(fig_cfg.get("split_seed", 0))
     thunder_frame_column = fig_cfg.get("thunder_frame_column", None)
 
     detect_cfg = fig_cfg.get("detection", config.get("figure_4cd", {}).get("detection", {}))
+    kde_sigma_frc_px = float(fig_cfg.get("frc_kde_sigma_px", detect_cfg.get("kde_sigma", 1.0)))
     det_threshold = float(detect_cfg.get("log_threshold", 0.1))
     det_min_sigma = float(detect_cfg.get("min_sigma", 0.75))
     det_max_sigma = float(detect_cfg.get("max_sigma", 1.5))
@@ -374,17 +421,49 @@ def run_figure_4frc(config: Dict[str, Any]) -> None:
         seed=split_seed,
         frames=cvdm_frames,
     )
+    cvdm_a, cvdm_b = _equalize_split_counts(cvdm_a, cvdm_b, seed=split_seed + 11)
     thunder_a, thunder_b = _split_localizations(
         thunder_nm,
         split_mode=split_mode,
         seed=split_seed + 1,
         frames=thunder_frames,
     )
+    thunder_a, thunder_b = _equalize_split_counts(thunder_a, thunder_b, seed=split_seed + 22)
 
-    img_cvdm_a = _rasterize_points_nm(cvdm_a, image_size_nm=image_size_nm, bin_size_nm=bin_size_nm)
-    img_cvdm_b = _rasterize_points_nm(cvdm_b, image_size_nm=image_size_nm, bin_size_nm=bin_size_nm)
-    img_thunder_a = _rasterize_points_nm(thunder_a, image_size_nm=image_size_nm, bin_size_nm=bin_size_nm)
-    img_thunder_b = _rasterize_points_nm(thunder_b, image_size_nm=image_size_nm, bin_size_nm=bin_size_nm)
+    print(
+        "[figure_4frc] Equalized split counts: "
+        f"CVDM A={int(cvdm_a.shape[0])}, B={int(cvdm_b.shape[0])}; "
+        f"ThunderSTORM A={int(thunder_a.shape[0])}, B={int(thunder_b.shape[0])}"
+    )
+
+    img_cvdm_a = _kde_render_points_nm(
+        cvdm_a,
+        image_size_px=image_size_frc_px,
+        image_size_nm=image_size_nm,
+        kde_sigma_px=kde_sigma_frc_px,
+        pixel_size_nm=pixel_size_frc_nm,
+    )
+    img_cvdm_b = _kde_render_points_nm(
+        cvdm_b,
+        image_size_px=image_size_frc_px,
+        image_size_nm=image_size_nm,
+        kde_sigma_px=kde_sigma_frc_px,
+        pixel_size_nm=pixel_size_frc_nm,
+    )
+    img_thunder_a = _kde_render_points_nm(
+        thunder_a,
+        image_size_px=image_size_frc_px,
+        image_size_nm=image_size_nm,
+        kde_sigma_px=kde_sigma_frc_px,
+        pixel_size_nm=pixel_size_frc_nm,
+    )
+    img_thunder_b = _kde_render_points_nm(
+        thunder_b,
+        image_size_px=image_size_frc_px,
+        image_size_nm=image_size_nm,
+        kde_sigma_px=kde_sigma_frc_px,
+        pixel_size_nm=pixel_size_frc_nm,
+    )
 
     out_cvdm_a_tif = fig_cfg.get("output_frc_cvdm_split_a_tif", "figure-4e-frc-cvdm-split-a.tif")
     out_cvdm_b_tif = fig_cfg.get("output_frc_cvdm_split_b_tif", "figure-4e-frc-cvdm-split-b.tif")
@@ -423,17 +502,20 @@ def run_figure_4frc(config: Dict[str, Any]) -> None:
     fig_inputs.savefig(os.path.join(output_dir, out_inputs_plot), dpi=300)
     plt.close(fig_inputs)
 
-    freqs_cvdm, frc_cvdm = _fourier_ring_correlation(img_cvdm_a, img_cvdm_b, bin_size_nm=bin_size_nm)
-    freqs_thunder, frc_thunder = _fourier_ring_correlation(img_thunder_a, img_thunder_b, bin_size_nm=bin_size_nm)
-
-    threshold = float(fig_cfg.get("frc_threshold", 1.0 / 7.0))
-    crossing_freq_cvdm, resolution_nm_cvdm = _frc_crossing(freqs_cvdm, frc_cvdm, threshold)
-    crossing_freq_thunder, resolution_nm_thunder = _frc_crossing(freqs_thunder, frc_thunder, threshold)
+    freqs_cvdm, frc_cvdm = _fourier_ring_correlation(
+        img_cvdm_a,
+        img_cvdm_b,
+        bin_size_nm=pixel_size_frc_nm,
+    )
+    freqs_thunder, frc_thunder = _fourier_ring_correlation(
+        img_thunder_a,
+        img_thunder_b,
+        bin_size_nm=pixel_size_frc_nm,
+    )
 
     fig, ax = plt.subplots(1, 1, figsize=(5, 4))
     ax.plot(freqs_cvdm, frc_cvdm, color="red", linewidth=1.5, label="CVDM")
     ax.plot(freqs_thunder, frc_thunder, color="blue", linewidth=1.5, label="ThunderSTORM")
-    ax.axhline(threshold, color="black", linestyle="--", linewidth=1.0, label=f"threshold={threshold:.3f}")
     ax.set_xlabel(r"Spatial frequency (nm$^{-1}$)")
     ax.set_ylabel("FRC")
     ax.set_title("FRC")
@@ -460,7 +542,6 @@ def run_figure_4frc(config: Dict[str, Any]) -> None:
     df_out.to_csv(os.path.join(output_dir, out_csv), index=False)
 
     summary = {
-        "threshold": threshold,
         "split_mode": split_mode,
         "split_seed": split_seed,
         "count_match_total_localizations": count_match_total,
@@ -476,20 +557,20 @@ def run_figure_4frc(config: Dict[str, Any]) -> None:
             "n_localizations": int(cvdm_nm.shape[0]),
             "n_split_a": int(cvdm_a.shape[0]),
             "n_split_b": int(cvdm_b.shape[0]),
-            "crossing_frequency_nm_inv": None if not np.isfinite(crossing_freq_cvdm) else float(crossing_freq_cvdm),
-            "resolution_nm": None if not np.isfinite(resolution_nm_cvdm) else float(resolution_nm_cvdm),
         },
         "thunderstorm": {
             "n_localizations": int(thunder_nm.shape[0]),
             "n_split_a": int(thunder_a.shape[0]),
             "n_split_b": int(thunder_b.shape[0]),
-            "crossing_frequency_nm_inv": None if not np.isfinite(crossing_freq_thunder) else float(crossing_freq_thunder),
-            "resolution_nm": None if not np.isfinite(resolution_nm_thunder) else float(resolution_nm_thunder),
         },
         "pixel_size_nm": lr_pixel_size_nm,
         "upsample_factor": upsample_factor,
         "cvdm_nm_per_px": cvdm_nm_per_px,
-        "frc_bin_size_nm": bin_size_nm,
+        "frc_render_mode": "kde",
+        "frc_image_size_px": int(image_size_frc_px),
+        "frc_pixel_size_nm": float(pixel_size_frc_nm),
+        "frc_kde_sigma_px": float(kde_sigma_frc_px),
+        "frc_bin_size_nm": float(pixel_size_frc_nm),
     }
     out_summary = fig_cfg.get("output_frc_summary", "figure-4e-frc-summary.yaml")
     with open(os.path.join(output_dir, out_summary), "w", encoding="utf-8") as handle:

@@ -1,4 +1,4 @@
-output_dir: "/mnt/seitzcx/exps/exp_CVDM/probes/csbt2/cvdm_uniform-nx-sigma1-multi"
+output_dir: "/mnt/seitzcx/exps/exp_CVDM/probes/csbt2/cvdm_uniform-nx-sigma1-label_sigma-1"
 
 model:
   noise_model_type: "unet"
@@ -7,9 +7,9 @@ model:
   load_mu_weights: null
   # Optional per-density weight overrides (keys must match `probe.densities` as strings)
   load_weights_map:
-    "100": "/mnt/seitzcx/exps/exp_CVDM/models/csbt2/cvdm_uniform-n100-sigma1/weights/model_12000_963d1078-9ccc-4c47-b44a-c073b69ce5d4.h5"
-    "200": "/mnt/seitzcx/exps/exp_CVDM/models/csbt2/cvdm_uniform-n200-sigma1/weights/model_12000_e496ca0a-81e5-4bc9-90c1-52c902b85986.h5"
-    "500": "/mnt/seitzcx/exps/exp_CVDM/models/csbt2/cvdm_uniform-n500-sigma1/weights/model_12000_ddf7cf0f-0611-4b52-8f8f-8c024f444509.h5"
+    "100": "/mnt/seitzcx/exps/exp_CVDM/models/csbt2/cvdm_uniform-n100-sigma1-label_sigma-1/weights/model_12000_9eff37e8-2195-495d-8f55-8cabd7ecf1db.h5"
+    "200": "/mnt/seitzcx/exps/exp_CVDM/models/csbt2/cvdm_uniform-n200-sigma1-label_sigma-1/weights/model_12000_615694e1-47a4-4a5e-a2d8-ab2e5ba5ef49.h5"
+    "500": "/mnt/seitzcx/exps/exp_CVDM/models/csbt2/cvdm_uniform-n500-sigma1-label_sigma-1/weights/model_12000_5483c766-e9d5-40e2-b7c6-6ac23cf32c3c.h5"
   # load_mu_weights_map:
   #   "100": "/path/to/mu_weights_density_100.h5"
   snr_expansion_n: 1
@@ -42,7 +42,7 @@ sim:
   #grf_sigma: 10.0
   grf_seed: null
   label_upsample: 4
-  label_sigma: 2.0
+  label_sigma: 1.0
   label_scale: 100.0
   label_centering: true
   input_upsample: 4
